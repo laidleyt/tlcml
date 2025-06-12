@@ -1,0 +1,334 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+/* Base styles */
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: white;
+    margin: 0;
+    padding: 0;
+    color: #212529;
+}
+
+h2.app-title {
+    font-weight: 600;
+    text-align: center;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 2rem;
+}
+
+/* Layout wrapping */
+.app-container {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* Tab content container */
+.visual-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+/* --- Subtab bar and tab controls --- */
+#subtab-controls {
+    padding: 0.5rem 0;
+    margin: 0 auto;
+    max-width: 900px;
+    text-align: center;
+}
+
+.subtab-wrapper {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+}
+
+.subtab-item {
+    padding: 0.4rem 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: white;
+    color: black;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.subtab-item:hover {
+    background-color: #f0f0f0;
+}
+
+.subtab-item.selected-tab {
+    background-color: black;
+    color: white;
+    border-color: black;
+    font-weight: 600;
+}
+
+/* --- Plot & Wrappers --- */
+.graph-wrapper {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-bottom: 1rem;
+}
+
+.unbound-plot {
+    padding-bottom: 1rem;
+}
+
+.js-plotly-plot {
+    margin-bottom: 0 !important;
+}
+
+/* --- Narration Blocks --- */
+.narration-box {
+    margin: 0.5rem auto 1rem auto;
+    padding: 0.75rem 1rem;
+    max-width: 880px;
+    font-size: 12px;
+    font-weight: 360;
+    line-height: 1.4;
+    color: #333;
+    text-align: left;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fcfcfc;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.unbound-plot {
+    padding-bottom: 0.75rem;  /* ↓ reduced padding below plot */
+}
+
+.narration-box:first-of-type {
+    margin-top: 1.5rem;
+}
+
+.narration-box:last-of-type {
+    margin-bottom: 2rem;
+}
+
+/* Optional: Tab button styling (match hover feel) */
+.tab-label {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    font-size: 1rem;
+    font-weight: 500;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: white;
+    color: black;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-label:hover {
+    background-color: #f0f0f0;
+}
+
+.tab-label.selected {
+    background-color: black;
+    color: white;
+    border-color: black;
+    font-weight: 600;
+}
+
+/* Footer (if used later) */
+.footer-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.5rem;
+    border-top: 1px solid #ccc;
+    background-color: white;
+}
+
+.footer-buttons button {
+    border: 1px solid #ccc;
+    background-color: white;
+    color: black;
+    font-weight: 500;
+    padding: 0.2rem 0.25rem;
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.footer-buttons button:hover {
+    background-color: #105d95;
+    color: white;
+}
+
+.graph-wrapper {
+    margin-top: 0px !important;
+    padding-top: 0px !important;
+}
+
+.unbound-plot {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
+.narration-box span,
+.narration-box p,
+.narration-box div {
+    text-indent: 0 !important;
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+.footer-buttons {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background-color: white;
+    border-top: 1px solid #ccc;
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0;
+    z-index: 1000;
+}
+
+.footer-link {
+    text-decoration: none;
+    color: black;
+    border: 1px solid #ccc;
+    padding: 0.25rem 0.75rem;
+    margin: 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 400;
+    border-radius: 0;  /* flat rectangle */
+    transition: background-color 0.2s ease;
+}
+
+.footer-link:hover {
+    background-color: #f2f2f2;
+}
+
+def serve_layout():
+    return html.Div([
+        html.Div([
+            html.H2("NYC Taxi Rides: Live Forecasts, Anomalies & Counterfactuals", className="app-title"),
+            dcc.Tabs(
+                id='main-tab',
+                value='forecast-tab',
+                children=[
+                    dcc.Tab(label='Forecasting', value='forecast-tab'),
+                    dcc.Tab(label='Anomalies', value='anomaly-tab'),
+                    dcc.Tab(label='Bayesian Counterfactuals', value='bayes-tab')
+                ]
+            ),
+            html.Div(id='subtab-controls', className='subtab-container'),
+            dcc.Store(id='subtab-store'),
+            html.Div(id='visual-content', className='visual-container'),
+            html.Div(
+                className="footer-buttons",
+                children=[
+                    html.A("About", href="#", className="footer-link", id="about-link"),
+                    html.A("Repo", href="https://github.com/laidleyt", target="_blank", className="footer-link")
+                        ]
+                ),
+            html.Div(id="about-popup", className="about-popup", style={"display": "none"}),
+        ], className="app-container")
+    ])
+
+app.layout = serve_layout
+
+.about-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1001;
+    background-color: white;
+    border: 1px solid #ccc;
+    padding: 1.5rem;
+    max-width: 520px;
+    width: 90%;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+
+.about-popup h4 {
+    font-size: 1.25rem;
+    margin-top: 0;
+}
+
+.about-popup p {
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+}
+
+.about-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0,0,0,0.35);
+    z-index: 1000;
+}
+
+/* Semi-transparent backdrop */
+#visual-content::before {
+    content: '';
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.25);
+    z-index: 999;
+}
+
+body.about-visible #visual-content::before {
+    display: block;
+}
+
+body.about-open::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0,0,0,0.3);
+    z-index: 998;
+}
+
+.footer-bar {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-top: 1rem;
+    padding: 0.5rem 0;
+}
+
+.footer-center {
+    justify-content: center;
+}
+
+.footer-tab {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+    color: black;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    text-align: center;
+    text-decoration: none;
+}
+
+.footer-tab:hover {
+    background-color: #f0f0f0;
+}
+
+
+
+
