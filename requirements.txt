@@ -6,3 +6,4 @@ prophet
 scikit-learn
 duckdb
 numpy
+pyarrow
