@@ -117,7 +117,7 @@ def plot_orbit_forecast(df, title="Orbit Bayesian Forecast: NYS Mask Mandate End
         xaxis=dict(domain=[0, 1]),
         yaxis=dict(domain=[0, 1]),
         xaxis2=dict(domain=[0.40, 0.60], anchor='y2', showticklabels=True, tickangle=45, tickformat="%b %d", tickfont=dict(size=9)),
-        yaxis2=dict(domain=[0.65, 0.95], anchor='x2', showgrid=True, linecolor='black', linewidth=1, showticklabels=False)
+        yaxis2=dict(domain=[0.65, 0.95], anchor='x2', showgrid=True, linecolor='black', linewidth=1, showticklabels=True)
     )
 
     fig4.add_shape(
