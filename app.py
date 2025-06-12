@@ -44,7 +44,7 @@ def serve_layout():
             # Footer buttons (centered)
             html.Div([
                 html.Div("About", id="about-button", className="footer-tab", n_clicks=0),
-                html.A("Repo", href="https://github.com/laidleyt", target="_blank", className="footer-tab")
+                html.A("Repo", href="https://github.com/laidleyt/tlcml", target="_blank", className="footer-tab")
             ], className="footer-bar footer-center"),
         ], className="app-container"),
 
