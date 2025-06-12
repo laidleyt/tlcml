@@ -62,7 +62,7 @@ def plot_orbit_forecast(df, title="Orbit Bayesian Forecast: January 10 Placebo")
         legend=dict(
             orientation="h", yanchor="top", y=1.08, x=1.02, xanchor="right",
             bgcolor="white", bordercolor="lightgray", borderwidth=1,
-            font=dict(size=18)
+            font=dict(size=12)
         ),
         xaxis=dict(domain=[0, 1]),
         yaxis=dict(domain=[0, 1]),
