@@ -5,6 +5,7 @@ import duckdb
 import subprocess
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import boto3
 
 # Constants
 TLC_BASE_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/"
@@ -117,31 +118,6 @@ def get_available_months():
         current += relativedelta(months=1)
 
     return months
-
-def push_updated_parquet():
-    try:
-        log("[PUSH] Adding updated Parquet to Git...")
-
-        subprocess.run(["git", "add", INPUT_PARQUET], check=True)
-
-        result = subprocess.run(["git", "diff", "--cached", "--quiet"])
-        if result.returncode == 0:
-            log("[PUSH] No changes to commit — working tree clean.")
-            return
-
-        subprocess.run([
-            "git", "commit",
-            "-m", f"Update forecast_input.parquet on {datetime.now().isoformat()}"
-        ], check=True)
-
-        # Use HTTPS + your token stored as an env var
-        repo_url = f"https://{os.environ['GITHUB_PAT']}@github.com/laidleyt/tlcml.git"
-
-        subprocess.run(["git", "push", repo_url, "main"], check=True)
-
-        log("[PUSH] Successfully pushed updated Parquet to GitHub.")
-    except subprocess.CalledProcessError as e:
-        log(f"[ERROR] Git push failed: {e}")
 
 def upload_to_s3():
     s3_client = boto3.client(
