@@ -12,6 +12,18 @@ RAW_DIR = "data/raw/"
 INPUT_PARQUET = "data/forecast_input.parquet"
 OUTPUT_PARQUET = "data/forecast_output.parquet"
 
+import subprocess
+import os
+
+def setup_ssh_agent():
+    with open("/tmp/deploy_key", "w") as f:
+        f.write(os.environ["SSH_PRIVATE_KEY"])
+    os.chmod("/tmp/deploy_key", 0o600)
+
+    subprocess.run(["ssh-agent", "-s"], check=True)
+    subprocess.run(["ssh-add", "/tmp/deploy_key"], check=True)
+    log("[PUSH] SSH key loaded for Git push.")
+
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
@@ -150,11 +162,13 @@ def main():
         df = pd.read_parquet(INPUT_PARQUET)
         log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
 
-        # ✅ Push back to GitHub so it's truly persistent
+        # ✅ Load SSH key only when ready to push
+        setup_ssh_agent()
         push_updated_parquet()
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
+
 
 if __name__ == "__main__":
     main()
