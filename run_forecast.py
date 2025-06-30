@@ -2,6 +2,7 @@ import pandas as pd
 from prophet import Prophet
 from datetime import datetime
 import os
+import boto3
 
 INPUT_PARQUET = "data/forecast_input.parquet"
 OUTPUT_PARQUET = "data/forecast_output.parquet"
@@ -34,6 +35,18 @@ def get_next_forecast_window(input_df, output_df):
             return None, None
 
     return forecast_start, forecast_end
+
+def upload_forecast_to_s3():
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+    )
+    bucket_name = "tlcml-forecast-data"
+    s3_key = "forecast_output.parquet"
+
+    s3_client.upload_file(OUTPUT_PARQUET, bucket_name, s3_key)
+    log(f"[PUSH] Uploaded {OUTPUT_PARQUET} to s3://{bucket_name}/{s3_key}")
 
 def main():
     try:
@@ -89,3 +102,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    upload_forecast_to_s3()
