@@ -199,9 +199,9 @@ def main():
         df = pd.read_parquet(INPUT_PARQUET)
         log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
 
-        # ✅ Load SSH key only when ready to push
-        setup_ssh_agent()
-        push_updated_parquet()
+        # Load SSH key only when ready to push
+        # setup_ssh_agent()
+        # push_updated_parquet()
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
