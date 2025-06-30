@@ -20,9 +20,23 @@ def setup_ssh_agent():
         f.write(os.environ["SSH_PRIVATE_KEY"])
     os.chmod("/tmp/deploy_key", 0o600)
 
-    subprocess.run(["ssh-agent", "-s"], check=True)
+    # Start the ssh-agent and capture output
+    result = subprocess.run(["ssh-agent", "-s"], capture_output=True, text=True, check=True)
+    output = result.stdout
+
+    # Extract and export SSH_AUTH_SOCK and SSH_AGENT_PID
+    for line in output.splitlines():
+        if "SSH_AUTH_SOCK" in line:
+            sock = line.split(";")[0].split("=")[1]
+            os.environ["SSH_AUTH_SOCK"] = sock
+        if "SSH_AGENT_PID" in line:
+            pid = line.split(";")[0].split("=")[1]
+            os.environ["SSH_AGENT_PID"] = pid
+
+    # Now run ssh-add
     subprocess.run(["ssh-add", "/tmp/deploy_key"], check=True)
-    log("[PUSH] SSH key loaded for Git push.")
+
+    log(f"[PUSH] SSH key loaded for Git push. (Agent PID {os.environ['SSH_AGENT_PID']})")
 
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
