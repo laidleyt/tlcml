@@ -36,6 +36,18 @@ def get_next_forecast_window(input_df, output_df):
 
     return forecast_start, forecast_end
 
+def download_input_from_s3():
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+    )
+    bucket_name = "tlcml-forecast-data"
+    s3_key = "forecast_input.parquet"
+
+    s3_client.download_file(bucket_name, s3_key, INPUT_PARQUET)
+    log(f"[PULL] Downloaded s3://{bucket_name}/{s3_key} to {INPUT_PARQUET}")
+
 def upload_forecast_to_s3():
     s3_client = boto3.client(
         "s3",
@@ -50,6 +62,7 @@ def upload_forecast_to_s3():
 
 def main():
     try:
+        download_input_from_s3()
         while True:
             input_df = pd.read_parquet(INPUT_PARQUET)
             output_df = pd.read_parquet(OUTPUT_PARQUET) if os.path.exists(OUTPUT_PARQUET) else pd.DataFrame(columns=["ds"])
@@ -94,6 +107,7 @@ def main():
                 df_all = forecast_window
 
             df_all.to_parquet(OUTPUT_PARQUET, index=False)
+            upload_forecast_to_s3() 
 
             log(f"[DONE] Appended forecast for window: {forecast_start.date()} to {forecast_end.date()}")
 
@@ -102,4 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    upload_forecast_to_s3()
