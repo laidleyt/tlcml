@@ -159,17 +159,15 @@ def push_updated_parquet():
         log("[PUSH] Adding updated Parquet to Git...")
         subprocess.run(["git", "add", INPUT_PARQUET], check=True)
 
-        # Check if there's anything to commit
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"]
-        )
+        # ✅ CHECK if anything is staged for commit:
+        result = subprocess.run(["git", "diff", "--cached", "--quiet"])
         if result.returncode == 0:
             log("[PUSH] No changes to commit — working tree clean.")
             return
 
         subprocess.run([
-            "git", "commit", "-m",
-            f'Update forecast_input.parquet on {datetime.now().isoformat()}'
+            "git", "commit",
+            "-m", f"Update forecast_input.parquet on {datetime.now().isoformat()}"
         ], check=True)
         subprocess.run(["git", "push"], check=True)
         log("[PUSH] Successfully pushed updated Parquet to GitHub.")
