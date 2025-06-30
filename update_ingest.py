@@ -93,6 +93,8 @@ def get_available_months():
 
     df = pd.read_parquet(INPUT_PARQUET)
     latest_date = pd.to_datetime(df["trip_date"]).max()
+
+    # Always roll to the *next month* start
     next_month = (latest_date + pd.offsets.MonthBegin(1)).replace(day=1)
 
     today = datetime.today()
@@ -103,8 +105,14 @@ def get_available_months():
 
     while current <= this_month:
         month_str = current.strftime("%Y-%m")
-        if check_remote_parquet_exists(month_str):
+
+        # Only add if you don't already have all expected days
+        days_expected = (current + pd.offsets.MonthEnd(0)).day
+        local_days = len(df[df["trip_date"].dt.to_period("M") == month_str])
+
+        if check_remote_parquet_exists(month_str) and local_days < days_expected:
             months.append(month_str)
+
         current += relativedelta(months=1)
 
     return months
