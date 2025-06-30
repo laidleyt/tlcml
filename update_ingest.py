@@ -17,13 +17,6 @@ def log(msg):
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
-def get_latest_month_from_parquet():
-    if not os.path.exists(INPUT_PARQUET):
-        raise FileNotFoundError("Input Parquet does not exist — can't determine next month.")
-    df = pd.read_parquet(INPUT_PARQUET)
-    latest_date = pd.to_datetime(df["trip_date"]).max()
-    return (latest_date + pd.offsets.MonthBegin(1)).strftime("%Y-%m")
-
 def check_remote_parquet_exists(month_str):
     fname = f"yellow_tripdata_{month_str}.parquet"
     url = TLC_BASE_URL + fname
@@ -91,21 +84,52 @@ def prime_forecast_output_if_needed():
         df.to_parquet(OUTPUT_PARQUET, index=False)
         log(f"[INIT] Created forecast_output.parquet with {len(df)} rows of actuals.")
 
+def get_available_months():
+    """
+    Find all missing months between your local Parquet and today.
+    """
+    if not os.path.exists(INPUT_PARQUET):
+        raise FileNotFoundError("Input Parquet does not exist — can't determine next month.")
+
+    df = pd.read_parquet(INPUT_PARQUET)
+    latest_date = pd.to_datetime(df["trip_date"]).max()
+    next_month = (latest_date + pd.offsets.MonthBegin(1)).replace(day=1)
+
+    today = datetime.today()
+    this_month = datetime(today.year, today.month, 1)
+
+    months = []
+    current = next_month
+
+    while current <= this_month:
+        month_str = current.strftime("%Y-%m")
+        if check_remote_parquet_exists(month_str):
+            months.append(month_str)
+        current += relativedelta(months=1)
+
+    return months
+
 def main():
     try:
-        next_month = get_latest_month_from_parquet()
-        if not check_remote_parquet_exists(next_month):
-            log(f"[SKIP] No remote file available for {next_month}")
+        new_months = get_available_months()
+        if not new_months:
+            log(f"[SKIP] No new remote files available.")
             return
 
-        path = download_parquet(next_month)
-        df_month = summarize_month_to_df(path, next_month)
-        append_and_save(df_month)
-        os.remove(path)
-        log(f"[CLEANUP] Removed raw file: {path}")
+        log(f"[INFO] Found {len(new_months)} new month(s): {', '.join(new_months)}")
 
-        # Prime forecast_output.parquet if missing
+        for month_str in new_months:
+            path = download_parquet(month_str)
+            df_month = summarize_month_to_df(path, month_str)
+            append_and_save(df_month)
+            os.remove(path)
+            log(f"[CLEANUP] Removed raw file: {path}")
+
         prime_forecast_output_if_needed()
+
+        # Sanity check
+        df = pd.read_parquet(INPUT_PARQUET)
+        log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
