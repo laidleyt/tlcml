@@ -11,24 +11,32 @@ def log(msg):
 
 def get_next_forecast_window(input_df, output_df):
     input_df["trip_date"] = pd.to_datetime(input_df["trip_date"])
+    output_df["ds"] = pd.to_datetime(output_df["ds"]) if not output_df.empty else pd.Series(dtype="datetime64[ns]")
+
     latest_actual_date = input_df["trip_date"].max()
 
-    # Determine last full month
-    if latest_actual_date.day < 28:
-        latest_actual_date = (latest_actual_date - pd.offsets.MonthBegin(1)).replace(day=1) + pd.offsets.MonthEnd(0)
+    # Roll back if the current month is incomplete
+    today = datetime.today()
+    if latest_actual_date.month == today.month and latest_actual_date.day < 28:
+        latest_full_month_end = (latest_actual_date - pd.offsets.MonthBegin(1)).replace(day=1) + pd.offsets.MonthEnd(0)
     else:
-        latest_actual_date = latest_actual_date.replace(day=1) + pd.offsets.MonthEnd(0)
+        latest_full_month_end = latest_actual_date.replace(day=1) + pd.offsets.MonthEnd(0)
 
-    forecast_start = latest_actual_date + pd.offsets.Day(1)
+    forecast_start = latest_full_month_end + pd.offsets.Day(1)
     forecast_end = forecast_start + pd.offsets.MonthEnd(0)
 
-    # Check if already forecasted
+    log(f"[DEBUG] Latest actual date: {latest_actual_date.date()}")
+    log(f"[DEBUG] Latest full month end: {latest_full_month_end.date()}")
+    log(f"[DEBUG] Next forecast window: {forecast_start.date()} to {forecast_end.date()}")
+
+    # Already done?
     if not output_df.empty:
-        latest_forecast_date = pd.to_datetime(output_df["ds"]).max()
+        latest_forecast_date = output_df["ds"].max()
         if latest_forecast_date >= forecast_end:
             return None, None
 
     return forecast_start, forecast_end
+
 
 def main():
     try:
