@@ -161,22 +161,22 @@ def push_updated_parquet():
 
         # Check if there's anything to commit
         result = subprocess.run(
-            ["git", "diff", "--cached", "--exit-code"],
-            capture_output=True
+            ["git", "diff", "--cached", "--quiet"]
         )
         if result.returncode == 0:
             log("[PUSH] No changes to commit — working tree clean.")
             return
 
-        subprocess.run(
-            ["git", "commit", "-m", f'Update forecast_input.parquet on {datetime.now().isoformat()}'],
-            check=True
-        )
+        subprocess.run([
+            "git", "commit", "-m",
+            f'Update forecast_input.parquet on {datetime.now().isoformat()}'
+        ], check=True)
         subprocess.run(["git", "push"], check=True)
         log("[PUSH] Successfully pushed updated Parquet to GitHub.")
 
     except subprocess.CalledProcessError as e:
         log(f"[ERROR] Git push failed: {e}")
+
 
 
 def main():
