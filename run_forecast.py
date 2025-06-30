@@ -35,19 +35,17 @@ def get_next_forecast_window(input_df, output_df):
 
     return forecast_start, forecast_end
 
-
 def main():
     try:
-        input_df = pd.read_parquet(INPUT_PARQUET)
-        output_df = pd.read_parquet(OUTPUT_PARQUET) if os.path.exists(OUTPUT_PARQUET) else pd.DataFrame(columns=["ds"])
+        while True:
+            input_df = pd.read_parquet(INPUT_PARQUET)
+            output_df = pd.read_parquet(OUTPUT_PARQUET) if os.path.exists(OUTPUT_PARQUET) else pd.DataFrame(columns=["ds"])
 
-    while True:
-        input_df = pd.read_parquet(INPUT_PARQUET)  # <--- always reload latest actuals
-        forecast_start, forecast_end = get_next_forecast_window(input_df, output_df)
+            forecast_start, forecast_end = get_next_forecast_window(input_df, output_df)
 
-        if forecast_start is None:
-            log("[DONE] Forecast is already up to date.")
-            break
+            if forecast_start is None:
+                log("[DONE] Forecast is already up to date.")
+                break
 
             log(f"[INFO] Forecasting window: {forecast_start.date()} to {forecast_end.date()}")
 
@@ -83,7 +81,6 @@ def main():
                 df_all = forecast_window
 
             df_all.to_parquet(OUTPUT_PARQUET, index=False)
-            output_df = df_all
 
             log(f"[DONE] Appended forecast for window: {forecast_start.date()} to {forecast_end.date()}")
 
