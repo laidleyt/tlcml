@@ -16,15 +16,17 @@ import subprocess
 import os
 
 def setup_ssh_agent():
+    import os
+    import subprocess
+
     with open("/tmp/deploy_key", "w") as f:
         f.write(os.environ["SSH_PRIVATE_KEY"])
     os.chmod("/tmp/deploy_key", 0o600)
 
-    # Start the ssh-agent and CAPTURE OUTPUT
+    # Start ssh-agent, capture its env exports
     result = subprocess.run(["ssh-agent", "-s"], capture_output=True, text=True, check=True)
     output = result.stdout
 
-    # Export SSH_AUTH_SOCK and SSH_AGENT_PID to this process
     for line in output.splitlines():
         if "SSH_AUTH_SOCK" in line:
             sock = line.split(";")[0].split("=")[1]
@@ -33,8 +35,15 @@ def setup_ssh_agent():
             pid = line.split(";")[0].split("=")[1]
             os.environ["SSH_AGENT_PID"] = pid
 
-    subprocess.run(["ssh-add", "/tmp/deploy_key"], check=True)
-    log(f"[PUSH] SSH key loaded for Git push. (Agent PID {os.environ['SSH_AGENT_PID']})")
+    # Add the key — but allow "already added" exit status
+    result = subprocess.run(["ssh-add", "/tmp/deploy_key"], text=True)
+    if result.returncode == 1:
+        log("[WARN] SSH key already added to agent — continuing.")
+    elif result.returncode != 0:
+        raise Exception(f"ssh-add failed with exit code {result.returncode}")
+
+    log(f"[PUSH] SSH key loaded. Agent PID={os.environ['SSH_AGENT_PID']}")
+
 
 
 def log(msg):
