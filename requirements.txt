@@ -7,3 +7,4 @@ scikit-learn
 duckdb
 numpy
 pyarrow
+boto3
