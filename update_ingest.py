@@ -12,42 +12,6 @@ RAW_DIR = "data/raw/"
 INPUT_PARQUET = "data/forecast_input.parquet"
 OUTPUT_PARQUET = "data/forecast_output.parquet"
 
-import subprocess
-import os
-
-def setup_ssh_agent():
-    import os
-    import subprocess
-
-    with open("/tmp/deploy_key", "w") as f:
-        f.write(os.environ["SSH_PRIVATE_KEY"])
-    os.chmod("/tmp/deploy_key", 0o600)
-
-    result = subprocess.run(["ssh-agent", "-s"], capture_output=True, text=True, check=True)
-    output = result.stdout
-
-    for line in output.splitlines():
-        if "SSH_AUTH_SOCK" in line:
-            sock = line.split(";")[0].split("=")[1]
-            os.environ["SSH_AUTH_SOCK"] = sock
-        if "SSH_AGENT_PID" in line:
-            pid = line.split(";")[0].split("=")[1]
-            os.environ["SSH_AGENT_PID"] = pid
-
-    # This time: do not use check=True — catch manually!
-    result = subprocess.run(["ssh-add", "/tmp/deploy_key"])
-    if result.returncode == 0:
-        log("[PUSH] SSH key added successfully.")
-    elif result.returncode == 1:
-        log("[WARN] SSH key was already added — continuing.")
-    else:
-        raise Exception(f"ssh-add failed with exit code {result.returncode}")
-
-    log(f"[PUSH] SSH key loaded. Agent PID={os.environ['SSH_AGENT_PID']}")
-
-
-
-
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
@@ -157,9 +121,9 @@ def get_available_months():
 def push_updated_parquet():
     try:
         log("[PUSH] Adding updated Parquet to Git...")
+
         subprocess.run(["git", "add", INPUT_PARQUET], check=True)
 
-        # ✅ CHECK if anything is staged for commit:
         result = subprocess.run(["git", "diff", "--cached", "--quiet"])
         if result.returncode == 0:
             log("[PUSH] No changes to commit — working tree clean.")
@@ -169,9 +133,13 @@ def push_updated_parquet():
             "git", "commit",
             "-m", f"Update forecast_input.parquet on {datetime.now().isoformat()}"
         ], check=True)
-        subprocess.run(["git", "push"], check=True)
-        log("[PUSH] Successfully pushed updated Parquet to GitHub.")
 
+        # Use HTTPS + your token stored as an env var
+        repo_url = f"https://{os.environ['GITHUB_PAT']}@github.com/laidleyt/tlcml.git"
+
+        subprocess.run(["git", "push", repo_url, "main"], check=True)
+
+        log("[PUSH] Successfully pushed updated Parquet to GitHub.")
     except subprocess.CalledProcessError as e:
         log(f"[ERROR] Git push failed: {e}")
 
@@ -199,9 +167,7 @@ def main():
         df = pd.read_parquet(INPUT_PARQUET)
         log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
 
-        # Load SSH key only when ready to push
-        # setup_ssh_agent()
-        # push_updated_parquet()
+        push_updated_parquet()
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
