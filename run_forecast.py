@@ -15,7 +15,6 @@ def get_next_forecast_window(input_df, output_df):
 
     latest_actual_date = input_df["trip_date"].max()
 
-    # Roll back if the current month is incomplete
     today = datetime.today()
     if latest_actual_date.month == today.month and latest_actual_date.day < 28:
         latest_full_month_end = (latest_actual_date - pd.offsets.MonthBegin(1)).replace(day=1) + pd.offsets.MonthEnd(0)
@@ -29,7 +28,6 @@ def get_next_forecast_window(input_df, output_df):
     log(f"[DEBUG] Latest full month end: {latest_full_month_end.date()}")
     log(f"[DEBUG] Next forecast window: {forecast_start.date()} to {forecast_end.date()}")
 
-    # Already done?
     if not output_df.empty:
         latest_forecast_date = output_df["ds"].max()
         if latest_forecast_date >= forecast_end:
@@ -43,12 +41,13 @@ def main():
         input_df = pd.read_parquet(INPUT_PARQUET)
         output_df = pd.read_parquet(OUTPUT_PARQUET) if os.path.exists(OUTPUT_PARQUET) else pd.DataFrame(columns=["ds"])
 
-        while True:
-            forecast_start, forecast_end = get_next_forecast_window(input_df, output_df)
+    while True:
+        input_df = pd.read_parquet(INPUT_PARQUET)  # <--- always reload latest actuals
+        forecast_start, forecast_end = get_next_forecast_window(input_df, output_df)
 
-            if forecast_start is None:
-                log("[DONE] Forecast is already up to date.")
-                break
+        if forecast_start is None:
+            log("[DONE] Forecast is already up to date.")
+            break
 
             log(f"[INFO] Forecasting window: {forecast_start.date()} to {forecast_end.date()}")
 
