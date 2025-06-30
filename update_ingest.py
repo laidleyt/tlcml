@@ -23,7 +23,6 @@ def setup_ssh_agent():
         f.write(os.environ["SSH_PRIVATE_KEY"])
     os.chmod("/tmp/deploy_key", 0o600)
 
-    # Start ssh-agent, capture its env exports
     result = subprocess.run(["ssh-agent", "-s"], capture_output=True, text=True, check=True)
     output = result.stdout
 
@@ -35,14 +34,17 @@ def setup_ssh_agent():
             pid = line.split(";")[0].split("=")[1]
             os.environ["SSH_AGENT_PID"] = pid
 
-    # Add the key — but allow "already added" exit status
-    result = subprocess.run(["ssh-add", "/tmp/deploy_key"], text=True)
-    if result.returncode == 1:
-        log("[WARN] SSH key already added to agent — continuing.")
-    elif result.returncode != 0:
+    # This time: do not use check=True — catch manually!
+    result = subprocess.run(["ssh-add", "/tmp/deploy_key"])
+    if result.returncode == 0:
+        log("[PUSH] SSH key added successfully.")
+    elif result.returncode == 1:
+        log("[WARN] SSH key was already added — continuing.")
+    else:
         raise Exception(f"ssh-add failed with exit code {result.returncode}")
 
     log(f"[PUSH] SSH key loaded. Agent PID={os.environ['SSH_AGENT_PID']}")
+
 
 
 
