@@ -2,6 +2,7 @@ import os
 import requests
 import pandas as pd
 import duckdb
+import subprocess
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -117,6 +118,16 @@ def get_available_months():
 
     return months
 
+def push_updated_parquet():
+    try:
+        log("[PUSH] Adding updated Parquet to Git...")
+        subprocess.run(["git", "add", INPUT_PARQUET], check=True)
+        subprocess.run(["git", "commit", "-m", f'Update forecast_input.parquet on {datetime.now().isoformat()}'], check=True)
+        subprocess.run(["git", "push"], check=True)
+        log("[PUSH] Successfully pushed updated Parquet to GitHub.")
+    except subprocess.CalledProcessError as e:
+        log(f"[ERROR] Git push failed: {e}")
+
 def main():
     try:
         new_months = get_available_months()
@@ -138,6 +149,9 @@ def main():
         # Sanity check
         df = pd.read_parquet(INPUT_PARQUET)
         log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
+
+        # ✅ Push back to GitHub so it's truly persistent
+        push_updated_parquet()
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
