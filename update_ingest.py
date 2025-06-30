@@ -143,7 +143,17 @@ def push_updated_parquet():
     except subprocess.CalledProcessError as e:
         log(f"[ERROR] Git push failed: {e}")
 
+def upload_to_s3():
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+    )
+    bucket_name = "tlcml-forecast-data"
+    s3_key = "forecast_input.parquet"
 
+    s3_client.upload_file(INPUT_PARQUET, bucket_name, s3_key)
+    log(f"[PUSH] Uploaded {INPUT_PARQUET} to s3://{bucket_name}/{s3_key}")
 
 def main():
     try:
@@ -167,7 +177,7 @@ def main():
         df = pd.read_parquet(INPUT_PARQUET)
         log(f"[CHECK] Local Parquet now covers: {df['trip_date'].min().date()} — {df['trip_date'].max().date()}")
 
-        push_updated_parquet()
+        upload_to_s3()
 
     except Exception as e:
         log(f"[ERROR] Ingestion failed: {e}")
