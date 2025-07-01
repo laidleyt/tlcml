@@ -1,111 +1,277 @@
-import pandas as pd
-from prophet import Prophet
-from datetime import datetime
+import dash
+from dash import dcc, html, Input, Output, State
+import dash_bootstrap_components as dbc
+from dash.dependencies import ALL
 import os
-import boto3
 
-INPUT_PARQUET = "data/forecast_input.parquet"
-OUTPUT_PARQUET = "data/forecast_output.parquet"
+# Static visuals
+from visuals.vis1 import fig as fig1
+from visuals.vis2 import fig2
+from visuals.prophet import fig3
+from visuals.bayesian import fig4
+from visuals.bayesian2 import fig5
+from visuals.bayesian_placebo import fig6
 
-def log(msg):
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+# 🔑 LIVE figure generator (NO training)
+from visuals.prophet_live import make_live_forecast_figure
 
-def download_input_from_s3():
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
-    )
-    bucket_name = "tlcml-forecast-data"
-    s3_key = "forecast_input.parquet"
+# ────────────────────────────── #
+# DASH APP SETUP
+# ────────────────────────────── #
 
-    s3_client.download_file(bucket_name, s3_key, INPUT_PARQUET)
-    log(f"[PULL] Downloaded {s3_key} to {INPUT_PARQUET}")
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap"
+    ],
+    suppress_callback_exceptions=True
+)
+app.title = "NYC Taxi ML Dashboard"
 
-def upload_forecast_to_s3():
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
-    )
-    bucket_name = "tlcml-forecast-data"
-    s3_key = "forecast_output.parquet"
+def serve_layout():
+    return html.Div([
+        html.Div([
+            html.H2("NYC Taxi Rides: Live Forecasts, Anomalies & Counterfactuals", className="app-title"),
+            dcc.Tabs(
+                id='main-tab',
+                value='forecast-tab',
+                children=[
+                    dcc.Tab(label='Forecasting', value='forecast-tab'),
+                    dcc.Tab(label='Anomalies', value='anomaly-tab'),
+                    dcc.Tab(label='Bayesian Counterfactuals', value='bayes-tab')
+                ]
+            ),
+            html.Div(id='subtab-controls', className='subtab-container'),
+            dcc.Store(id='subtab-store'),
+            html.Div(id='visual-content', className='visual-container'),
 
-    s3_client.upload_file(OUTPUT_PARQUET, bucket_name, s3_key)
-    log(f"[PUSH] Uploaded {OUTPUT_PARQUET} to s3://{bucket_name}/{s3_key}")
+            html.Div([
+                html.Div("About", id="about-button", className="footer-tab", n_clicks=0),
+                html.A("Repo", href="https://github.com/laidleyt/tlcml", target="_blank", className="footer-tab")
+            ], className="footer-bar footer-center"),
+        ], className="app-container"),
 
-def get_next_forecast_window(input_df, output_df):
-    input_df["trip_date"] = pd.to_datetime(input_df["trip_date"])
-    output_df["ds"] = pd.to_datetime(output_df["ds"]) if not output_df.empty else pd.Series(dtype="datetime64[ns]")
+        dbc.Modal(
+            id="about-modal",
+            is_open=False,
+            centered=True,
+            backdrop=True,
+            children=[
+                dbc.ModalHeader(dbc.ModalTitle("About This Dashboard")),
+                dbc.ModalBody([
+                    html.P([
+                        "This dashboard analyzes NYC Yellow Cab data from 2020–2025 using ML techniques like ",
+                        html.A("Prophet", href="https://github.com/facebook/prophet", target="_blank"),
+                        ", ",
+                        html.A("DBSCAN", href="https://scikit-learn.org/stable/modules/generated/sklearn.cluster.DBSCAN.html", target="_blank"),
+                        ", and ",
+                        html.A("Orbit", href="https://github.com/uber/orbit", target="_blank"),
+                        "."
+                    ]),
+                    html.P("It includes a live forecast where the latest NYC Yellow Cab data is ingested from the NYC TLC, appended to local storage, and used to project the following month."),
+                    html.P("Anomaly detection focuses on in-city rides (excluding airports and suburbs) to identify behavioral patterns linked to social and public health changes."),
+                    html.P("Finally, a Bayesian counterfactual forecasting model uses subway ridership, weather, and COVID hospitalizations as covariates to estimate how policy shifts affected taxi demand."),
+                    html.P([
+                        "Thanks to the ",
+                        html.A("NYC TLC", href="https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page", target="_blank"),
+                        " for making these data available."
+                    ])
+                ])
+            ]
+        ),
+        dcc.Store(id='about-visible', data=False)
+    ])
 
-    latest_actual_date = input_df["trip_date"].max()
+app.layout = serve_layout
 
-    latest_full_month_end = latest_actual_date.replace(day=1) + pd.offsets.MonthEnd(0)
-    forecast_start = latest_full_month_end + pd.offsets.Day(1)
-    forecast_end = forecast_start + pd.offsets.MonthEnd(0)
+# ────────────────────────────── #
+# ABOUT MODAL
+# ────────────────────────────── #
 
-    log(f"[DEBUG] Latest actual date: {latest_actual_date}")
-    log(f"[DEBUG] Latest full month end: {latest_full_month_end}")
-    log(f"[DEBUG] Next forecast window: {forecast_start} to {forecast_end}")
+@app.callback(
+    Output("about-modal", "is_open"),
+    Input("about-button", "n_clicks"),
+    State("about-modal", "is_open"),
+    prevent_initial_call=True
+)
+def toggle_modal(n, is_open):
+    return not is_open
 
-    if not output_df.empty:
-        latest_forecast_date = output_df["ds"].max()
-        log(f"[DEBUG] Latest forecasted date: {latest_forecast_date}")
+# ────────────────────────────── #
+# SUBTAB STORE INIT
+# ────────────────────────────── #
 
-        if latest_forecast_date >= forecast_end:
-            if latest_actual_date > latest_forecast_date:
-                log("[FORCE] Actuals are newer than forecast. Forcing new forecast.")
-                return forecast_start, forecast_end
-            else:
-                log("[DONE] Forecast is already up to date.")
-                return None, None
+@app.callback(
+    Output('subtab-store', 'data'),
+    Input('main-tab', 'value')
+)
+def initialize_subtab_value(main_tab):
+    if main_tab == 'forecast-tab':
+        return 'forecast-live'
+    elif main_tab == 'anomaly-tab':
+        return 'anomaly-overview'
+    elif main_tab == 'bayes-tab':
+        return 'bayes-210'
+    return None
 
-    return forecast_start, forecast_end
+# ────────────────────────────── #
+# VISUAL CONTENT CALLBACK
+# ────────────────────────────── #
 
-def main():
-    try:
-        download_input_from_s3()
-        while True:
-            input_df = pd.read_parquet(INPUT_PARQUET)
-            output_df = pd.read_parquet(OUTPUT_PARQUET) if os.path.exists(OUTPUT_PARQUET) else pd.DataFrame(columns=["ds"])
-
-            forecast_start, forecast_end = get_next_forecast_window(input_df, output_df)
-
-            if forecast_start is None:
-                break
-
-            log(f"[INFO] Forecasting {forecast_start.date()} to {forecast_end.date()}")
-
-            train_df = input_df[
-                (input_df["trip_date"] >= "2020-03-01") &
-                (input_df["trip_date"] <= forecast_start - pd.offsets.Day(1))
-            ].rename(columns={"trip_date": "ds", "total_rides": "y"}).dropna()
-
-            model = Prophet()
-            model.fit(train_df)
-
-            future = model.make_future_dataframe(
-                periods=(forecast_end - forecast_start).days + 1,
-                freq="D"
+@app.callback(
+    Output('visual-content', 'children'),
+    Input('main-tab', 'value'),
+    Input('subtab-store', 'data'),
+    prevent_initial_call='initial_duplicate'
+)
+def update_visual(main_tab, subtab_value):
+    def wrap_visual(fig, top_text):
+        return html.Div([
+            html.Div(
+                dcc.Graph(
+                    figure=fig,
+                    className="unbound-plot",
+                    style={"marginTop": "0px", "paddingTop": "0px"}
+                ),
+                className="graph-wrapper"
+            ),
+            html.Div(
+                top_text,
+                className="narration-box",
+                style={"margin-bottom": "4px", "fontSize": "13px"}
             )
-            forecast = model.predict(future)
+        ])
 
-            forecast_window = forecast[
-                (forecast["ds"] >= forecast_start) &
-                (forecast["ds"] <= forecast_end)
-            ][["ds", "yhat", "yhat_lower", "yhat_upper"]].copy()
-            forecast_window["type"] = "forecast"
+    if main_tab == 'forecast-tab':
+        if subtab_value == 'forecast-live':
+            fig = make_live_forecast_figure()
+            top = [
+                html.Strong("Current and Forecasted Taxi Trips: "),
+                html.Span(
+                    "This dynamically updated visual plots the newest available NYC taxi trip totals (in orange), "
+                    "aggregated from individual trip data from NYC Open Data. In blue are predicted values obtained "
+                    "using Prophet ML, trained on a time series back to March 2020. Historical actuals are "
+                    "plotted in black, showing 24 months of prior activity."
+                )
+            ]
+            return wrap_visual(fig, top)
 
-            df_all = pd.concat([output_df, forecast_window], ignore_index=True)
-            df_all = df_all.drop_duplicates(subset="ds", keep="last").sort_values("ds")
-            df_all.to_parquet(OUTPUT_PARQUET, index=False)
+        elif subtab_value == 'forecast-static':
+            top = [
+                html.Strong("Full Visualization of Time Series and Static Q1 2025 Prediction: "),
+                html.Span(
+                    "This visual shows the full time series back to March 2020, with predicted vs. actual values "
+                    "for the first quarter of 2025."
+                )
+            ]
+            return wrap_visual(fig3, top)
 
-            upload_forecast_to_s3()
-            log(f"[DONE] Appended forecast for {forecast_start.date()} to {forecast_end.date()}")
-            break
+    elif main_tab == 'anomaly-tab':
+        if subtab_value == 'anomaly-overview':
+            top = [
+                html.Strong("Anomaly detection overview (2020–2025): "),
+                html.Span(
+                    "This visual plots anomalous clusters identified with DBSCAN. Periods shaded in green or red "
+                    "show high or low anomaly rates, with daily trip totals and COVID trends for context."
+                )
+            ]
+            return wrap_visual(fig1, top)
 
-    except Exception as e:
-        log(f"[ERROR] Forecast failed: {e}")
+        elif subtab_value == 'anomaly-zoom':
+            top = [
+                html.Strong("Detailed anomaly clusters (2022): "),
+                html.Span(
+                    "Focuses on 2022 to show post-COVID clusters, border reopenings, and pattern shifts."
+                )
+            ]
+            return wrap_visual(fig2, top)
 
-if __name__ == "__main__":
-    main()
+    elif main_tab == 'bayes-tab':
+        if subtab_value == 'bayes-210':
+            top = [
+                html.Strong("Bayesian forecast: NYS mask mandate lifted (Feb 10, 2022): "),
+                html.Span(
+                    "Orbit-based counterfactual: estimates the impact of the state-level mask lift."
+                )
+            ]
+            return wrap_visual(fig4, top)
+        elif subtab_value == 'bayes-307':
+            top = [
+                html.Strong("Bayesian forecast: NYC Public Schools mask mandate lifted (Mar 7, 2022): "),
+                html.Span(
+                    "Shows the effect of the city schools mandate lift."
+                )
+            ]
+            return wrap_visual(fig5, top)
+        elif subtab_value == 'bayes-placebo':
+            top = [
+                html.Strong("Bayesian placebo test (Jan 10, 2022): "),
+                html.Span(
+                    "Validates no shift when no policy changed."
+                )
+            ]
+            return wrap_visual(fig6, top)
+
+    return html.Div("Invalid selection.")
+
+# ────────────────────────────── #
+# SUBTAB CONTROLS CALLBACK
+# ────────────────────────────── #
+
+@app.callback(
+    Output('subtab-controls', 'children'),
+    Input('main-tab', 'value'),
+    Input('subtab-store', 'data')
+)
+def render_fake_radio_subtabs(main_tab, current_subtab):
+    def make_div(label, value):
+        selected = 'selected-tab' if current_subtab == value else ''
+        return html.Div(
+            label,
+            className=f'subtab-item {selected}',
+            n_clicks=0,
+            id={'type': 'subtab-item', 'index': value}
+        )
+
+    if main_tab == 'forecast-tab':
+        return html.Div([
+            make_div("Live Forecast (Latest Month)", 'forecast-live'),
+            make_div("Historic Forecast (2020-2025)", 'forecast-static')
+        ], className='subtab-wrapper')
+    elif main_tab == 'anomaly-tab':
+        return html.Div([
+            make_div("2020–2025 Overview", 'anomaly-overview'),
+            make_div("2022 Cluster Analysis", 'anomaly-zoom')
+        ], className='subtab-wrapper')
+    elif main_tab == 'bayes-tab':
+        return html.Div([
+            make_div("Feb 10 (NYS Mask Lift)", 'bayes-210'),
+            make_div("Mar 7 (NYCPS Mask Lift)", 'bayes-307'),
+            make_div("Placebo (Jan 10)", 'bayes-placebo')
+        ], className='subtab-wrapper')
+    return html.Div()
+
+# ────────────────────────────── #
+# SUBTAB CLICK CALLBACK
+# ────────────────────────────── #
+
+@app.callback(
+    Output('subtab-store', 'data', allow_duplicate=True),
+    Input({'type': 'subtab-item', 'index': ALL}, 'n_clicks'),
+    State({'type': 'subtab-item', 'index': ALL}, 'id'),
+    prevent_initial_call=True
+)
+def set_selected_subtab(n_clicks_list, id_list):
+    if not any(n_clicks_list):
+        raise dash.exceptions.PreventUpdate
+    triggered_idx = n_clicks_list.index(max(n_clicks_list))
+    return id_list[triggered_idx]['index']
+
+# ────────────────────────────── #
+# RUN SERVER
+# ────────────────────────────── #
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 8050))
+    app.run(host="0.0.0.0", port=port)
