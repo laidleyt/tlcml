@@ -1,17 +1,19 @@
 import dash
 import os
-from dash import dcc, html, Input, Output, State, ctx
+from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 from dash.dependencies import ALL
 
-# Import all 7 visuals
+# Import static visuals
 from visuals.vis1 import fig as fig1
 from visuals.vis2 import fig2
 from visuals.prophet import fig3
-from visuals.prophet_live import fig7
 from visuals.bayesian import fig4
 from visuals.bayesian2 import fig5
 from visuals.bayesian_placebo import fig6
+
+# Import the live forecast generator
+from visuals.prophet_live import make_live_forecast_figure
 
 app = dash.Dash(
     __name__,
@@ -41,14 +43,13 @@ def serve_layout():
             dcc.Store(id='subtab-store'),
             html.Div(id='visual-content', className='visual-container'),
 
-            # Footer buttons (centered)
             html.Div([
                 html.Div("About", id="about-button", className="footer-tab", n_clicks=0),
                 html.A("Repo", href="https://github.com/laidleyt/tlcml", target="_blank", className="footer-tab")
             ], className="footer-bar footer-center"),
         ], className="app-container"),
 
-                dbc.Modal(
+        dbc.Modal(
             id="about-modal",
             is_open=False,
             centered=True,
@@ -75,14 +76,11 @@ def serve_layout():
                     ])
                 ])
             ]
-        )
-        ,
-                dcc.Store(id='about-visible', data=False)
+        ),
+        dcc.Store(id='about-visible', data=False)
     ])
 
-
 app.layout = serve_layout
-
 
 @app.callback(
     Output("about-modal", "is_open"),
@@ -92,7 +90,6 @@ app.layout = serve_layout
 )
 def toggle_modal(n, is_open):
     return not is_open
-
 
 @app.callback(
     Output('subtab-store', 'data'),
@@ -116,24 +113,20 @@ def initialize_subtab_value(main_tab):
 def update_visual(main_tab, subtab_value):
     def wrap_visual(fig, top_text):
         return html.Div([
-        html.Div(
-            dcc.Graph(
+            html.Div(
+                dcc.Graph(
                     figure=fig,
                     className="unbound-plot",
-                    style={"marginTop": "0px", "paddingTop": "0px"}),
-            className="graph-wrapper",
-            style={"margin-top": "0px"}
-        ),
-        html.Div(
-            top_text,
-            className="narration-box",
-            style={
-                "margin-bottom": "4px",
-                "margin-top": "0px",
-                "fontSize": "13px"
-            }
-        )
-    ])
+                    style={"marginTop": "0px", "paddingTop": "0px"}
+                ),
+                className="graph-wrapper"
+            ),
+            html.Div(
+                top_text,
+                className="narration-box",
+                style={"margin-bottom": "4px", "fontSize": "13px"}
+            )
+        ])
 
     if main_tab == 'forecast-tab':
         if subtab_value == 'forecast-live':
@@ -141,12 +134,13 @@ def update_visual(main_tab, subtab_value):
                 html.Strong("Current and Forecasted Taxi Trips: "),
                 html.Span("This dynamically updated visual plots the newest available NYC taxi trip totals (in orange), aggregated from individual trip data from NYC Open Data. In blue are predicted values obtained using Meta's Prophet machine learning package, trained on a time series back to March 2020 (ie COVID/post era), and forecasts the next month yet to be released. Historical actuals are plotted in black, and show 24 months of prior activity on a rolling basis.")
             ]
-            return wrap_visual(fig7, top)
+            fig = make_live_forecast_figure()
+            return wrap_visual(fig, top)
 
         elif subtab_value == 'forecast-static':
             top = [
                 html.Strong("Full Visualization of Time Series and Static Q1 2025 Prediction: "),
-                html.Span("This visual shows the full time series back to March 2020, with predicted vs. actual values for the first quarter of 2025. The biggest 'defiers' of the prediction band were Valentine's Day--occurring on a Saturday in 2025--and March 29, when it reached a high of 81°F (both denoted with arrows). Historical actuals are plotted in black, with an inset of predicted Q12025 for greater detail.")
+                html.Span("This visual shows the full time series back to March 2020, with predicted vs. actual values for the first quarter of 2025. The biggest 'defiers' of the prediction band were Valentine's Day--occurring on a Saturday in 2025--and March 29, when it reached a high of 81°F (both denoted with arrows). Historical actuals are plotted in black, with an inset of predicted Q1 2025 for greater detail.")
             ]
             return wrap_visual(fig3, top)
 
@@ -154,14 +148,14 @@ def update_visual(main_tab, subtab_value):
         if subtab_value == 'anomaly-overview':
             top = [
                 html.Strong("Anomaly detection overview (2020–2025): "),
-                html.Span("This visual plots anomalous clusters of taxi activity identified using DBSCAN clustering. Periods shaded in green or red indicate clusters of unusually high or low anomaly rates, relative to rolling baselines, and specific date ranges labeled. Also plotted are daily trip totals (purple) and citywide COVID-19 hospitalization trends (red), which help contextualize periods of elevated or suppressed activity. Also pictured in dotted vertical lines are the NY State lifting of mask mandates, and NYC lifting of public school mask mandates.")
+                html.Span("This visual plots anomalous clusters of taxi activity identified using DBSCAN clustering. Periods shaded in green or red indicate clusters of unusually high or low anomaly rates, relative to rolling baselines, and specific date ranges labeled. Also plotted are daily trip totals (purple) and citywide COVID-19 hospitalization trends (red), which help contextualize periods of elevated or suppressed activity.")
             ]
             return wrap_visual(fig1, top)
 
         elif subtab_value == 'anomaly-zoom':
             top = [
                 html.Strong("Detailed anomaly clusters (2022): "),
-                html.Span("This visual focuses on 2022 to highlight clusters of anomalous taxi activity during the post-COVID recovery period. It captures shifting ridership patterns following major reopenings, including the return of international tourism after U.S. border restrictions were lifted. Specific clusters are labeled, with contextual overlays of daily trip totals and COVID hospitalization data to help interpret deviations.")
+                html.Span("This visual focuses on 2022 to highlight clusters of anomalous taxi activity during the post-COVID recovery period. It captures shifting ridership patterns following major reopenings, including the return of international tourism after U.S. border restrictions were lifted.")
             ]
             return wrap_visual(fig2, top)
 
@@ -169,21 +163,21 @@ def update_visual(main_tab, subtab_value):
         if subtab_value == 'bayes-210':
             top = [
                 html.Strong("Bayesian forecast: NYS mask mandate lifted (Feb 10, 2022): "),
-                html.Span("This model estimates the putative effect of NY State's mask mandate being lifted on February 10, 2022, using a Bayesian structural time series framework implemented with Uber's Orbit package, trained on taxi trip volume and covariates like COVID-19 hospitalizations, weather, and subway ridership. It then predicts the counterfactual trajectory had the policy not changed. A clear post-February 10 divergence between actual and predicted trips suggests a credible behavioral response—especially a sharp increase in ridership beginning about a week after the mandate was lifted.")
+                html.Span("This model estimates the putative effect of NY State's mask mandate being lifted on February 10, 2022, using a Bayesian structural time series framework with Uber's Orbit package. It predicts the counterfactual trajectory had the policy not changed, showing a sharp increase in ridership after the mandate was lifted.")
             ]
             return wrap_visual(fig4, top)
 
         elif subtab_value == 'bayes-307':
             top = [
                 html.Strong("Bayesian forecast: NYC Public Schools mask mandate lifted (Mar 7, 2022): "),
-                html.Span("The counterfactual forecast, trained on taxi trip volumes and key covariates, shows only a mild and short-lived deviation between actual and predicted rides after the intervention. Unlike the sharper divergence seen in the Feb 10 state-level mandate model, this result suggests a more limited or localized effect. Overall, the signal implies that the school policy had minimal impact on broader taxi ridership.")
+                html.Span("This model shows only a mild and short-lived deviation between actual and predicted rides after the intervention, suggesting a more limited or localized effect compared to the NYS policy.")
             ]
             return wrap_visual(fig5, top)
 
         elif subtab_value == 'bayes-placebo':
             top = [
                 html.Strong("Bayesian placebo test (Jan 10, 2022): "),
-                html.Span("This model uses January 10, 2022—when no policy change was introduced—as a placebo to test baseline fluctuation. Although actual ridership appeared to diverge somewhat from the forecast, this was accompanied by a wide credible interval, indicating high model uncertainty rather than a meaningful shift. Unlike the Feb 10 or Mar 7 interventions, no statistically significant deviation was detected. This supports the placebo's role as a valid negative control.")
+                html.Span("This placebo test shows that when no policy change was introduced, no significant divergence appeared, supporting the placebo’s role as a negative control.")
             ]
             return wrap_visual(fig6, top)
 
@@ -206,27 +200,21 @@ def render_fake_radio_subtabs(main_tab, current_subtab):
 
     if main_tab == 'forecast-tab':
         return html.Div(
-            [
-                make_div("Live Forecast (Latest Month)", 'forecast-live'),
-                make_div("Historic Forecast (2020-2025)", 'forecast-static')
-            ],
+            [make_div("Live Forecast (Latest Month)", 'forecast-live'),
+             make_div("Historic Forecast (2020-2025)", 'forecast-static')],
             className='subtab-wrapper'
         )
     elif main_tab == 'anomaly-tab':
         return html.Div(
-            [
-                make_div("2020–2025 Overview", 'anomaly-overview'),
-                make_div("2022 Cluster Analysis", 'anomaly-zoom')
-            ],
+            [make_div("2020–2025 Overview", 'anomaly-overview'),
+             make_div("2022 Cluster Analysis", 'anomaly-zoom')],
             className='subtab-wrapper'
         )
     elif main_tab == 'bayes-tab':
         return html.Div(
-            [
-                make_div("Feb 10 (NYS Mask Lift)", 'bayes-210'),
-                make_div("Mar 7 (NYCPS Mask Lift)", 'bayes-307'),
-                make_div("Placebo (Jan 10)", 'bayes-placebo')
-            ],
+            [make_div("Feb 10 (NYS Mask Lift)", 'bayes-210'),
+             make_div("Mar 7 (NYCPS Mask Lift)", 'bayes-307'),
+             make_div("Placebo (Jan 10)", 'bayes-placebo')],
             className='subtab-wrapper'
         )
     return html.Div()
@@ -242,7 +230,6 @@ def set_selected_subtab(n_clicks_list, id_list):
         raise dash.exceptions.PreventUpdate
     triggered_idx = n_clicks_list.index(max(n_clicks_list))
     return id_list[triggered_idx]['index']
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8050))
