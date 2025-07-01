@@ -6,6 +6,12 @@ import boto3
 import os
 from datetime import datetime
 
+def log_debug(msg):
+    log_line = f"{datetime.utcnow().isoformat()}Z | {msg}\n"
+    with open("data/forecast_debug_log.txt", "a") as f:
+        f.write(log_line)
+    print(msg)
+
 def download_forecast_from_s3():
     s3_client = boto3.client(
         "s3",
@@ -16,17 +22,15 @@ def download_forecast_from_s3():
     s3_key = "forecast_output.parquet"
     local_path = "data/forecast_output.parquet"
 
-    # 🚫 Always clear old local copy to avoid stale read
     if os.path.exists(local_path):
         os.remove(local_path)
-        print(f"[DEBUG] Removed existing local file: {local_path}")
+        log_debug(f"[DEBUG] Removed existing local file: {local_path}")
 
     s3_client.download_file(bucket_name, s3_key, local_path)
-    print(f"[PULL] Downloaded {s3_key} to {local_path}")
+    log_debug(f"[PULL] Downloaded {s3_key} to {local_path}")
 
-    # ✅ Double check the window from S3
     df_check = pd.read_parquet(local_path)
-    print(f"[DEBUG] Downloaded file min={df_check['ds'].min()} max={df_check['ds'].max()}")
+    log_debug(f"[DEBUG] Downloaded file min={df_check['ds'].min()} max={df_check['ds'].max()}")
 
 
 def make_live_forecast_figure():
@@ -48,7 +52,7 @@ def make_live_forecast_figure():
 
     raw_min = forecast_df['ds'].min()
     raw_max = forecast_df['ds'].max()
-    print(f"[DEBUG] Raw forecast parquet window: min={raw_min} max={raw_max}")
+    log_debug(f"[DEBUG] Raw forecast parquet window: min={raw_min} max={raw_max}")
 
     filtered_df = forecast_df[
         (forecast_df["ds"] >= forecast_start) &
@@ -57,15 +61,17 @@ def make_live_forecast_figure():
 
     filtered_min = filtered_df['ds'].min()
     filtered_max = filtered_df['ds'].max()
-    print(f"[DEBUG] Filtered forecast_df window: min={filtered_min} max={filtered_max}")
-    print(f"[DEBUG] Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
+    log_debug(f"[DEBUG] Filtered forecast_df window: min={filtered_min} max={filtered_max}")
+    log_debug(f"[DEBUG] Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
 
     if filtered_df.empty:
-        raise ValueError(
+        err = (
             f"[FAILSAFE] Filtered forecast_df is empty!\n"
             f"Raw parquet min: {raw_min} max: {raw_max}\n"
             f"Requested window: {forecast_start} to {forecast_end}"
         )
+        log_debug(err)
+        raise ValueError(err)
 
     snapshot = (
         f"Run Timestamp: {datetime.utcnow().isoformat()}Z\n"
@@ -110,7 +116,6 @@ def make_live_forecast_figure():
     )
 
     fig = go.Figure()
-
     fig.add_trace(go.Scatter(
         x=filtered_df["ds"], y=filtered_df["yhat_upper"],
         line=dict(width=0), showlegend=False, hoverinfo='skip'
