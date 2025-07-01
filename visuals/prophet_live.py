@@ -19,12 +19,10 @@ def download_from_s3(bucket, s3_key, local_path):
     print(f"[DEBUG] Downloaded s3://{bucket}/{s3_key} to {local_path}")
 
 def make_live_forecast_figure():
-    # Always pull fresh forecast + input
     bucket = "tlcml-forecast-data"
     download_from_s3(bucket, "forecast_output.parquet", "data/forecast_output.parquet")
     download_from_s3(bucket, "forecast_input.parquet", "data/forecast_input.parquet")
 
-    # Read files
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
     forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
 
@@ -42,14 +40,18 @@ def make_live_forecast_figure():
     print(f"[DEBUG] Last actual: {last_actual}")
     print(f"[DEBUG] Forecast window: {forecast_start} to {forecast_end}")
 
+    # Clamp: only forecast window
     filtered_df = forecast_df[
         (forecast_df["ds"] >= forecast_start) &
         (forecast_df["ds"] <= forecast_end)
     ]
-
     if filtered_df.empty:
-        raise ValueError("[ERROR] Filtered forecast is empty! Check upstream forecast file.")
+        raise ValueError("[ERROR] Filtered forecast empty — check forecast parquet.")
 
+    # Combine fitted + forecast for continuous CI band
+    full_ci_df = pd.concat([fitted_df, forecast_df]).drop_duplicates("ds").sort_values("ds")
+
+    # For display
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -57,16 +59,11 @@ def make_live_forecast_figure():
         (actual_df["trip_date"] >= prev_month_start) &
         (actual_df["trip_date"] <= last_actual)
     ]
-
     fitted_window = fitted_df[
         (fitted_df["ds"] >= prev_month_start) &
         (fitted_df["ds"] <= last_actual)
     ]
 
-    # Merge fitted + forecast to build continuous CI & line
-    full_ci_df = pd.concat([fitted_df, filtered_df]).drop_duplicates(subset="ds").sort_values("ds")
-
-    # CI hits for annotation
     merged_ci = pd.merge(
         fitted_window, window_actuals,
         left_on="ds", right_on="trip_date",
@@ -79,6 +76,7 @@ def make_live_forecast_figure():
     ci_hits = merged_ci["in_ci"].sum()
     ci_total = len(merged_ci)
     ci_pct = round((ci_hits / ci_total) * 100, 1) if ci_total > 0 else 0.0
+
     annotation_text = (
         f"{ci_hits} of {ci_total} actual days ({ci_pct}%) "
         f"fell within forecast band ({prev_month_start.strftime('%B %Y')})."
@@ -86,7 +84,7 @@ def make_live_forecast_figure():
 
     fig = go.Figure()
 
-    # Combined CI
+    # CI bands: full fitted + forecast
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat_upper"],
         line=dict(width=0), showlegend=False
@@ -97,20 +95,17 @@ def make_live_forecast_figure():
         line=dict(width=0), name="Forecast CI (80–95%)"
     ))
 
-    # Combined line
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat"],
         mode="lines", name="Forecast (Prophet)", line=dict(color="blue", width=2)
     ))
 
-    # All historical actuals
     fig.add_trace(go.Scatter(
         x=actual_df["trip_date"], y=actual_df["total_rides"],
         mode="markers", name="Historical Actuals",
         marker=dict(size=2, color="black", opacity=0.7)
     ))
 
-    # Recent observed window
     fig.add_trace(go.Scatter(
         x=window_actuals["trip_date"], y=window_actuals["total_rides"],
         mode="markers",
@@ -118,18 +113,17 @@ def make_live_forecast_figure():
         marker=dict(size=5, color="#FF6F00")
     ))
 
-    # Guides & vrect
+    # Correct shading: only forecast window
     fig.add_vrect(
-        x0=prev_month_start, x1=last_actual,
+        x0=forecast_start, x1=forecast_end,
         fillcolor="lightgray", opacity=0.3, layer="below", line_width=0
     )
     fig.add_vline(x=prev_month_start, line=dict(color="gray", dash="solid", width=1))
     fig.add_vline(x=forecast_start, line=dict(color="gray", dash="dot", width=1))
     fig.add_vline(x=forecast_end, line=dict(color="gray", dash="solid", width=1))
 
-    # Annotation placement
-    y_min = full_ci_df["yhat_lower"].min()
-    y_max = full_ci_df["yhat_upper"].max()
+    y_min = min(full_ci_df["yhat_lower"].min(), actual_df["total_rides"].min())
+    y_max = max(full_ci_df["yhat_upper"].max(), actual_df["total_rides"].max())
     y_range = y_max - y_min
     annotation_y = y_min + 0.33 * y_range
 
@@ -148,7 +142,7 @@ def make_live_forecast_figure():
     fig.add_annotation(
         text=prev_month_label,
         x=prev_month_start + pd.Timedelta(days=14),
-        y=185000,
+        y=y_max * 0.95,
         showarrow=False,
         font=dict(size=14, color="gray"), opacity=0.9,
         xref="x", yref="y"
@@ -157,7 +151,7 @@ def make_live_forecast_figure():
     fig.add_annotation(
         text=forecast_month_label,
         x=forecast_start + pd.Timedelta(days=14),
-        y=185000,
+        y=y_max * 0.95,
         showarrow=False,
         font=dict(size=14, color="gray"), opacity=0.9,
         xref="x", yref="y"
