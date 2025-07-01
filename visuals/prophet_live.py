@@ -25,6 +25,9 @@ def make_live_forecast_figure():
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
     forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
 
+    # 🔍 DEBUG: See the raw parquet window
+    print(f"[DEBUG] Raw forecast parquet window: min={forecast_df['ds'].min()} max={forecast_df['ds'].max()}")
+
     fitted_df = pd.read_parquet("data/forecast_fitted.parquet")
     fitted_df["ds"] = pd.to_datetime(fitted_df["ds"])
 
@@ -36,10 +39,15 @@ def make_live_forecast_figure():
     forecast_end = (forecast_start + relativedelta(months=1)) - pd.Timedelta(days=1)
     prev_month_start = forecast_start - relativedelta(months=1)
 
+    # Filter forecast_df to just the next forecast window
     forecast_df = forecast_df[
-    (forecast_df["ds"] >= forecast_start) &
-    (forecast_df["ds"] <= forecast_end)
+        (forecast_df["ds"] >= forecast_start) &
+        (forecast_df["ds"] <= forecast_end)
     ]
+
+    # 🔍 DEBUG: Show the filtered window + filter bounds
+    print(f"[DEBUG] Filtered forecast_df window: min={forecast_df['ds'].min()} max={forecast_df['ds'].max()}")
+    print(f"[DEBUG] Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
 
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
