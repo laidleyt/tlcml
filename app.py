@@ -141,61 +141,60 @@ def update_visual(main_tab, subtab_value):
             )
         ])
 
-if main_tab == 'forecast-tab':
-    if subtab_value == 'forecast-live':
-        fig = make_live_forecast_figure()
-        top = [
-            html.Strong("Current and Forecasted Taxi Trips: "),
-            html.Span("This dynamically updated visual plots the newest available NYC taxi trip totals (in orange), aggregated from individual trip data from NYC Open Data. In blue are predicted values obtained using Meta's Prophet machine learning package, trained on a time series back to March 2020 (ie COVID/post era), and forecasts the next month yet to be released. Historical actuals are plotted in black, and show 24 months of prior activity on a rolling basis.")
-        ]
-        return wrap_visual(fig, top)
+    if main_tab == 'forecast-tab':
+        if subtab_value == 'forecast-live':
+            fig = make_live_forecast_figure()
+            top = [
+                html.Strong("Current and Forecasted Taxi Trips: "),
+                html.Span("This dynamically updated visual plots the newest available NYC taxi trip totals (in orange), aggregated from individual trip data from NYC Open Data. In blue are predicted values obtained using Meta's Prophet machine learning package, trained on a time series back to March 2020 (ie COVID/post era), and forecasts the next month yet to be released. Historical actuals are plotted in black, and show 24 months of prior activity on a rolling basis.")
+            ]
+            return wrap_visual(fig, top)
 
-    elif subtab_value == 'forecast-static':
-        top = [
-            html.Strong("Full Visualization of Time Series and Static Q1 2025 Prediction: "),
-            html.Span("This visual shows the full time series back to March 2020, with predicted vs. actual values for the first quarter of 2025. The biggest 'defiers' of the prediction band were Valentine's Day--occurring on a Saturday in 2025--and March 29, when it reached a high of 81°F (both denoted with arrows). Historical actuals are plotted in black, with an inset of predicted Q12025 for greater detail.")
-        ]
-        return wrap_visual(fig3, top)
+        elif subtab_value == 'forecast-static':
+            top = [
+                html.Strong("Full Visualization of Time Series and Static Q1 2025 Prediction: "),
+                html.Span("This visual shows the full time series back to March 2020, with predicted vs. actual values for the first quarter of 2025. The biggest 'defiers' of the prediction band were Valentine's Day--occurring on a Saturday in 2025--and March 29, when it reached a high of 81°F (both denoted with arrows). Historical actuals are plotted in black, with an inset of predicted Q12025 for greater detail.")
+            ]
+            return wrap_visual(fig3, top)
 
-elif main_tab == 'anomaly-tab':
-    if subtab_value == 'anomaly-overview':
-        top = [
-            html.Strong("Anomaly detection overview (2020–2025): "),
-            html.Span("This visual plots anomalous clusters of taxi activity identified using DBSCAN clustering. Periods shaded in green or red indicate clusters of unusually high or low anomaly rates, relative to rolling baselines, and specific date ranges labeled. Also plotted are daily trip totals (purple) and citywide COVID-19 hospitalization trends (red), which help contextualize periods of elevated or suppressed activity. Also pictured in dotted vertical lines are the NY State lifting of mask mandates, and NYC lifting of public school mask mandates.")
-        ]
-        return wrap_visual(fig1, top)
+    elif main_tab == 'anomaly-tab':
+        if subtab_value == 'anomaly-overview':
+            top = [
+                html.Strong("Anomaly detection overview (2020–2025): "),
+                html.Span("This visual plots anomalous clusters of taxi activity identified using DBSCAN clustering. Periods shaded in green or red indicate clusters of unusually high or low anomaly rates, relative to rolling baselines, and specific date ranges labeled. Also plotted are daily trip totals (purple) and citywide COVID-19 hospitalization trends (red), which help contextualize periods of elevated or suppressed activity. Also pictured in dotted vertical lines are the NY State lifting of mask mandates, and NYC lifting of public school mask mandates.")
+            ]
+            return wrap_visual(fig1, top)
 
-    elif subtab_value == 'anomaly-zoom':
-        top = [
-            html.Strong("Detailed anomaly clusters (2022): "),
-            html.Span("This visual focuses on 2022 to highlight clusters of anomalous taxi activity during the post-COVID recovery period. It captures shifting ridership patterns following major reopenings, including the return of international tourism after U.S. border restrictions were lifted. Specific clusters are labeled, with contextual overlays of daily trip totals and COVID hospitalization data to help interpret deviations.")
-        ]
-        return wrap_visual(fig2, top)
+        elif subtab_value == 'anomaly-zoom':
+            top = [
+                html.Strong("Detailed anomaly clusters (2022): "),
+                html.Span("This visual focuses on 2022 to highlight clusters of anomalous taxi activity during the post-COVID recovery period. It captures shifting ridership patterns following major reopenings, including the return of international tourism after U.S. border restrictions were lifted. Specific clusters are labeled, with contextual overlays of daily trip totals and COVID hospitalization data to help interpret deviations.")
+            ]
+            return wrap_visual(fig2, top)
 
-elif main_tab == 'bayes-tab':
-    if subtab_value == 'bayes-210':
-        top = [
-            html.Strong("Bayesian forecast: NYS mask mandate lifted (Feb 10, 2022): "),
-            html.Span("This model estimates the putative effect of NY State's mask mandate being lifted on February 10, 2022, using a Bayesian structural time series framework implemented with Uber's Orbit package, trained on taxi trip volume and covariates like COVID-19 hospitalizations, weather, and subway ridership. It then predicts the counterfactual trajectory had the policy not changed. A clear post-February 10 divergence between actual and predicted trips suggests a credible behavioral response—especially a sharp increase in ridership beginning about a week after the mandate was lifted.")
-        ]
-        return wrap_visual(fig4, top)
+    elif main_tab == 'bayes-tab':
+        if subtab_value == 'bayes-210':
+            top = [
+                html.Strong("Bayesian forecast: NYS mask mandate lifted (Feb 10, 2022): "),
+                html.Span("This model estimates the putative effect of NY State's mask mandate being lifted on February 10, 2022, using a Bayesian structural time series framework implemented with Uber's Orbit package, trained on taxi trip volume and covariates like COVID-19 hospitalizations, weather, and subway ridership. It then predicts the counterfactual trajectory had the policy not changed. A clear post-February 10 divergence between actual and predicted trips suggests a credible behavioral response—especially a sharp increase in ridership beginning about a week after the mandate was lifted.")
+            ]
+            return wrap_visual(fig4, top)
 
-    elif subtab_value == 'bayes-307':
-        top = [
-            html.Strong("Bayesian forecast: NYC Public Schools mask mandate lifted (Mar 7, 2022): "),
-            html.Span("The counterfactual forecast, trained on taxi trip volumes and key covariates, shows only a mild and short-lived deviation between actual and predicted rides after the intervention. Unlike the sharper divergence seen in the Feb 10 state-level mandate model, this result suggests a more limited or localized effect. Overall, the signal implies that the school policy had minimal impact on broader taxi ridership.")
-        ]
-        return wrap_visual(fig5, top)
+        elif subtab_value == 'bayes-307':
+            top = [
+                html.Strong("Bayesian forecast: NYC Public Schools mask mandate lifted (Mar 7, 2022): "),
+                html.Span("The counterfactual forecast, trained on taxi trip volumes and key covariates, shows only a mild and short-lived deviation between actual and predicted rides after the intervention. Unlike the sharper divergence seen in the Feb 10 state-level mandate model, this result suggests a more limited or localized effect. Overall, the signal implies that the school policy had minimal impact on broader taxi ridership.")
+            ]
+            return wrap_visual(fig5, top)
 
-    elif subtab_value == 'bayes-placebo':
-        top = [
-            html.Strong("Bayesian placebo test (Jan 10, 2022): "),
-            html.Span("This model uses January 10, 2022—when no policy change was introduced—as a placebo to test baseline fluctuation. Although actual ridership appeared to diverge somewhat from the forecast, this was accompanied by a wide credible interval, indicating high model uncertainty rather than a meaningful shift. Unlike the Feb 10 or Mar 7 interventions, no statistically significant deviation was detected. This supports the placebo's role as a valid negative control.")
-        ]
-        return wrap_visual(fig6, top)
+        elif subtab_value == 'bayes-placebo':
+            top = [
+                html.Strong("Bayesian placebo test (Jan 10, 2022): "),
+                html.Span("This model uses January 10, 2022—when no policy change was introduced—as a placebo to test baseline fluctuation. Although actual ridership appeared to diverge somewhat from the forecast, this was accompanied by a wide credible interval, indicating high model uncertainty rather than a meaningful shift. Unlike the Feb 10 or Mar 7 interventions, no statistically significant deviation was detected. This supports the placebo's role as a valid negative control.")
+            ]
+            return wrap_visual(fig6, top)
 
-return html.Div("Invalid selection.")
-
+    return html.Div("Invalid selection.")
 
 # ────────────────────────────── #
 # SUBTAB CONTROLS CALLBACK
