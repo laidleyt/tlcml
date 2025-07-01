@@ -9,7 +9,7 @@ from datetime import datetime
 
 def download_forecast_from_s3():
     """
-    Download the latest forecast from S3.
+    Download the forecast file fresh from S3.
     Always removes any old local version first.
     """
     s3_client = boto3.client(
@@ -23,13 +23,13 @@ def download_forecast_from_s3():
 
     if os.path.exists(local_path):
         os.remove(local_path)
-        print(f"[DEBUG] Removed local copy: {local_path}")
+        print(f"[DEBUG] Removed stale local file: {local_path}")
 
     s3_client.download_file(bucket_name, s3_key, local_path)
     print(f"[DEBUG] Downloaded {s3_key} to {local_path}")
 
     df_check = pd.read_parquet(local_path)
-    print(f"[DEBUG] Forecast parquet range: {df_check['ds'].min()} to {df_check['ds'].max()}")
+    print(f"[DEBUG] S3 forecast range: {df_check['ds'].min()} to {df_check['ds'].max()}")
 
 
 def make_live_forecast_figure():
@@ -60,8 +60,11 @@ def make_live_forecast_figure():
         (forecast_df["ds"] <= forecast_end)
     ]
 
+    print(f"[DEBUG] Filtered forecast rows: {len(filtered_df)}")
+    print(f"[DEBUG] Filtered forecast range: {filtered_df['ds'].min()} to {filtered_df['ds'].max()}")
+
     if filtered_df.empty:
-        raise ValueError("[ERROR] Filtered forecast window is empty! Check upstream forecast file.")
+        raise ValueError("[ERROR] Filtered forecast is empty! Upstream file may be stale.")
 
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -76,7 +79,6 @@ def make_live_forecast_figure():
         (fitted_df["ds"] <= last_actual)
     ]
 
-    # Check CI coverage for annotation
     merged_ci = pd.merge(
         fitted_window,
         window_actuals,
@@ -92,7 +94,6 @@ def make_live_forecast_figure():
     ci_pct = round((ci_hits / ci_total) * 100, 1) if ci_total > 0 else 0.0
     annotation_text = f"{ci_hits}/{ci_total} days ({ci_pct}%) within CI ({prev_month_start.strftime('%B %Y')})"
 
-    # ── Build figure ───────────────────────────────
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
