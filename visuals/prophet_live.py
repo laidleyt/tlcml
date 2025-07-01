@@ -6,6 +6,12 @@ import boto3
 import os
 
 def download_forecast_from_s3():
+    print("[DEBUG] Starting download_forecast_from_s3()...")
+
+    # Check env keys
+    print(f"[DEBUG] ENV AWS_ACCESS_KEY_ID={os.environ.get('AWS_ACCESS_KEY_ID', 'MISSING')}")
+    print(f"[DEBUG] ENV AWS_SECRET_ACCESS_KEY present? {'Yes' if 'AWS_SECRET_ACCESS_KEY' in os.environ else 'No'}")
+
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
@@ -18,6 +24,13 @@ def download_forecast_from_s3():
     s3_client.download_file(bucket_name, s3_key, local_path)
     print(f"[PULL] Downloaded {s3_key} to {local_path}")
 
+    # File sanity check
+    file_size = os.path.getsize(local_path)
+    print(f"[DEBUG] Fetched file size: {file_size} bytes")
+
+    df = pd.read_parquet(local_path)
+    print(f"[DEBUG] Fresh parquet window: min={df['ds'].min()} max={df['ds'].max()}")
+
 def make_live_forecast_figure():
     # Always pull the freshest forecast before plotting
     download_forecast_from_s3()
@@ -25,8 +38,7 @@ def make_live_forecast_figure():
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
     forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
 
-    # 🔍 DEBUG: See the raw parquet window
-    print(f"[DEBUG] Raw forecast parquet window: min={forecast_df['ds'].min()} max={forecast_df['ds'].max()}")
+    print(f"[DEBUG] Raw forecast parquet window after pull: min={forecast_df['ds'].min()} max={forecast_df['ds'].max()}")
 
     fitted_df = pd.read_parquet("data/forecast_fitted.parquet")
     fitted_df["ds"] = pd.to_datetime(fitted_df["ds"])
@@ -39,15 +51,13 @@ def make_live_forecast_figure():
     forecast_end = (forecast_start + relativedelta(months=1)) - pd.Timedelta(days=1)
     prev_month_start = forecast_start - relativedelta(months=1)
 
-    # Filter forecast_df to just the next forecast window
     forecast_df = forecast_df[
         (forecast_df["ds"] >= forecast_start) &
         (forecast_df["ds"] <= forecast_end)
     ]
 
-    # 🔍 DEBUG: Show the filtered window + filter bounds
     print(f"[DEBUG] Filtered forecast_df window: min={forecast_df['ds'].min()} max={forecast_df['ds'].max()}")
-    print(f"[DEBUG] Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
+    print(f"[DEBUG] Forecast window bounds: Start={forecast_start} End={forecast_end}")
 
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -62,13 +72,8 @@ def make_live_forecast_figure():
         (fitted_df["ds"] <= last_actual)
     ]
 
-    actual_window = actual_df[
-        (actual_df["trip_date"] >= forecast_start - relativedelta(months=1)) &
-        (actual_df["trip_date"] <= last_actual)
-    ]
-
     merged_ci = pd.merge(
-        fitted_window, actual_window,
+        fitted_window, window_actuals,
         left_on="ds", right_on="trip_date", how="inner"
     )
     merged_ci["in_ci"] = (
@@ -104,7 +109,6 @@ def make_live_forecast_figure():
         fill='tonexty', fillcolor='rgba(150, 0, 255, 0.25)',
         line=dict(width=0), showlegend=False
     ))
-
     fig.add_trace(go.Scatter(
         x=forecast_df["ds"], y=forecast_df["yhat"],
         mode="lines", name="Forecast (Prophet)", line=dict(color="blue", width=2)
@@ -113,14 +117,12 @@ def make_live_forecast_figure():
         x=fitted_df["ds"], y=fitted_df["yhat"],
         mode="lines", name=None, line=dict(color="blue", width=2), showlegend=False
     ))
-
     fig.add_trace(go.Scatter(
         x=actual_df["trip_date"], y=actual_df["total_rides"],
         mode="markers", name="Historical Actuals",
         marker=dict(size=2, color="black", opacity=0.7),
         hovertemplate="Date: %{x|%b %d, %Y}<br>Trips: %{y:,}<extra></extra>"
     ))
-
     fig.add_trace(go.Scatter(
         x=window_actuals["trip_date"], y=window_actuals["total_rides"],
         mode="markers",
@@ -153,7 +155,6 @@ def make_live_forecast_figure():
         font=dict(size=14), bgcolor="white",
         bordercolor="gray", borderwidth=1
     )
-
     fig.add_annotation(
         text=prev_month_label,
         x=prev_month_start + pd.Timedelta(days=14),
@@ -163,7 +164,6 @@ def make_live_forecast_figure():
         opacity=0.9,
         xref="x", yref="y"
     )
-
     fig.add_annotation(
         text=forecast_month_label,
         x=forecast_start + pd.Timedelta(days=14),
