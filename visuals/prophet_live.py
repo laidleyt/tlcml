@@ -20,8 +20,10 @@ def download_from_s3(bucket, s3_key, local_path):
 
 def make_live_forecast_figure():
     bucket = "tlcml-forecast-data"
+    # Pull all 3 fresh every time
     download_from_s3(bucket, "forecast_output.parquet", "data/forecast_output.parquet")
     download_from_s3(bucket, "forecast_input.parquet", "data/forecast_input.parquet")
+    download_from_s3(bucket, "forecast_fitted.parquet", "data/forecast_fitted.parquet")
 
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
     forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
@@ -40,18 +42,17 @@ def make_live_forecast_figure():
     print(f"[DEBUG] Last actual: {last_actual}")
     print(f"[DEBUG] Forecast window: {forecast_start} to {forecast_end}")
 
-    # Check gap
-    last_fitted = fitted_df["ds"].max()
-    first_forecast = forecast_df["ds"].min()
-    print(f"[DEBUG] last_fitted={last_fitted} first_forecast={first_forecast}")
+    # Combine fitted + forecast for continuous band
+    full_ci_df = pd.concat([fitted_df, forecast_df]).drop_duplicates("ds").sort_values("ds")
 
-    # Combine continuous fitted + forecast
-    full_ci_df = pd.concat([fitted_df, forecast_df]).sort_values("ds")
+    # Double-check continuity
+    print(f"[DEBUG] Fitted ends: {fitted_df['ds'].max()} → Forecast starts: {forecast_df['ds'].min()}")
 
-    # View window
+    # Display window
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
+    # Observed window for previous month
     window_actuals = actual_df[
         (actual_df["trip_date"] >= prev_month_start) &
         (actual_df["trip_date"] <= last_actual)
@@ -62,6 +63,7 @@ def make_live_forecast_figure():
         (fitted_df["ds"] <= last_actual)
     ]
 
+    # Compute CI hits for previous month
     merged_ci = pd.merge(
         fitted_window, window_actuals,
         left_on="ds", right_on="trip_date",
@@ -80,9 +82,10 @@ def make_live_forecast_figure():
         f"fell within forecast band ({prev_month_start.strftime('%B %Y')})."
     )
 
+    # ─────────── FIGURE ─────────── #
     fig = go.Figure()
 
-    # CI band
+    # CI bands
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat_upper"],
         line=dict(width=0), showlegend=False
@@ -93,12 +96,13 @@ def make_live_forecast_figure():
         line=dict(width=0), name="Forecast CI (80–95%)"
     ))
 
-    # Forecast line
+    # Forecast + fitted line together
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat"],
         mode="lines", name="Forecast (Prophet)", line=dict(color="blue", width=2)
     ))
 
+    # Historical actuals
     fig.add_trace(go.Scatter(
         x=actual_df["trip_date"], y=actual_df["total_rides"],
         mode="markers", name="Historical Actuals",
@@ -112,7 +116,7 @@ def make_live_forecast_figure():
         marker=dict(size=5, color="#FF6F00")
     ))
 
-    # Shading only for forecast
+    # Shading just for forecast month
     fig.add_vrect(
         x0=forecast_start, x1=forecast_end,
         fillcolor="lightgray", opacity=0.3, layer="below", line_width=0
