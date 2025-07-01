@@ -2,6 +2,23 @@ import pandas as pd
 import plotly.graph_objects as go
 from dateutil.relativedelta import relativedelta
 import calendar
+import boto3
+import os
+
+def download_forecast_from_s3():
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+    )
+    bucket_name = "tlcml-forecast-data"
+    s3_key = "forecast_output.parquet"
+    local_path = "data/forecast_output.parquet"
+
+    s3_client.download_file(bucket_name, s3_key, local_path)
+    print(f"[PULL] Downloaded {s3_key} to {local_path}")
+
+download_forecast_from_s3()
 
 def make_live_forecast_figure():
     # Load data fresh each time
