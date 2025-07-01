@@ -40,18 +40,15 @@ def make_live_forecast_figure():
     print(f"[DEBUG] Last actual: {last_actual}")
     print(f"[DEBUG] Forecast window: {forecast_start} to {forecast_end}")
 
-    # Clamp: only forecast window
-    filtered_df = forecast_df[
-        (forecast_df["ds"] >= forecast_start) &
-        (forecast_df["ds"] <= forecast_end)
-    ]
-    if filtered_df.empty:
-        raise ValueError("[ERROR] Filtered forecast empty — check forecast parquet.")
+    # Check gap
+    last_fitted = fitted_df["ds"].max()
+    first_forecast = forecast_df["ds"].min()
+    print(f"[DEBUG] last_fitted={last_fitted} first_forecast={first_forecast}")
 
-    # Combine fitted + forecast for continuous CI band
-    full_ci_df = pd.concat([fitted_df, forecast_df]).drop_duplicates("ds").sort_values("ds")
+    # Combine continuous fitted + forecast
+    full_ci_df = pd.concat([fitted_df, forecast_df]).sort_values("ds")
 
-    # For display
+    # View window
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -59,6 +56,7 @@ def make_live_forecast_figure():
         (actual_df["trip_date"] >= prev_month_start) &
         (actual_df["trip_date"] <= last_actual)
     ]
+
     fitted_window = fitted_df[
         (fitted_df["ds"] >= prev_month_start) &
         (fitted_df["ds"] <= last_actual)
@@ -84,7 +82,7 @@ def make_live_forecast_figure():
 
     fig = go.Figure()
 
-    # CI bands: full fitted + forecast
+    # CI band
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat_upper"],
         line=dict(width=0), showlegend=False
@@ -95,6 +93,7 @@ def make_live_forecast_figure():
         line=dict(width=0), name="Forecast CI (80–95%)"
     ))
 
+    # Forecast line
     fig.add_trace(go.Scatter(
         x=full_ci_df["ds"], y=full_ci_df["yhat"],
         mode="lines", name="Forecast (Prophet)", line=dict(color="blue", width=2)
@@ -113,7 +112,7 @@ def make_live_forecast_figure():
         marker=dict(size=5, color="#FF6F00")
     ))
 
-    # Correct shading: only forecast window
+    # Shading only for forecast
     fig.add_vrect(
         x0=forecast_start, x1=forecast_end,
         fillcolor="lightgray", opacity=0.3, layer="below", line_width=0
