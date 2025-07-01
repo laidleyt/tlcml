@@ -1,7 +1,6 @@
 import pandas as pd
 import plotly.graph_objects as go
 from dateutil.relativedelta import relativedelta
-import calendar
 import boto3
 import os
 from datetime import datetime
@@ -9,7 +8,7 @@ from datetime import datetime
 
 def download_forecast_from_s3():
     """
-    Download the forecast file fresh from S3.
+    Download the latest forecast parquet from S3.
     Always removes any old local version first.
     """
     s3_client = boto3.client(
@@ -23,19 +22,46 @@ def download_forecast_from_s3():
 
     if os.path.exists(local_path):
         os.remove(local_path)
-        print(f"[DEBUG] Removed stale local file: {local_path}")
+        print(f"[DEBUG] Removed stale local forecast: {local_path}")
 
     s3_client.download_file(bucket_name, s3_key, local_path)
     print(f"[DEBUG] Downloaded {s3_key} to {local_path}")
 
     df_check = pd.read_parquet(local_path)
-    print(f"[DEBUG] S3 forecast range: {df_check['ds'].min()} to {df_check['ds'].max()}")
+    print(f"[DEBUG] Forecast parquet range: {df_check['ds'].min()} to {df_check['ds'].max()}")
+
+
+def download_input_from_s3():
+    """
+    Download the latest input parquet from S3.
+    Always removes any old local version first.
+    """
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+    )
+    bucket_name = "tlcml-forecast-data"
+    s3_key = "forecast_input.parquet"
+    local_path = "data/forecast_input.parquet"
+
+    if os.path.exists(local_path):
+        os.remove(local_path)
+        print(f"[DEBUG] Removed stale local input: {local_path}")
+
+    s3_client.download_file(bucket_name, s3_key, local_path)
+    print(f"[DEBUG] Downloaded {s3_key} to {local_path}")
+
+    df_check = pd.read_parquet(local_path)
+    print(f"[DEBUG] Input parquet range: {df_check['trip_date'].min()} to {df_check['trip_date'].max()}")
 
 
 def make_live_forecast_figure():
     """
     Build the live forecast figure for the dashboard.
     """
+    # Always pull fresh input AND forecast
+    download_input_from_s3()
     download_forecast_from_s3()
 
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
@@ -64,7 +90,7 @@ def make_live_forecast_figure():
     print(f"[DEBUG] Filtered forecast range: {filtered_df['ds'].min()} to {filtered_df['ds'].max()}")
 
     if filtered_df.empty:
-        raise ValueError("[ERROR] Filtered forecast is empty! Upstream file may be stale.")
+        raise ValueError("[ERROR] Filtered forecast is empty! Check upstream forecast file.")
 
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
