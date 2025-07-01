@@ -6,19 +6,11 @@ import boto3
 import os
 from datetime import datetime
 
-def log_debug(msg):
-    """
-    Log a debug message to stdout AND append to file for persistent trace.
-    """
-    log_line = f"{datetime.utcnow().isoformat()}Z | {msg}"
-    print(log_line)
-    with open("data/forecast_debug_log.txt", "a") as f:
-        f.write(log_line + "\n")
-
 
 def download_forecast_from_s3():
     """
-    Download the forecast file fresh from S3. Always clear local first.
+    Download the latest forecast from S3.
+    Always removes any old local version first.
     """
     s3_client = boto3.client(
         "s3",
@@ -31,18 +23,18 @@ def download_forecast_from_s3():
 
     if os.path.exists(local_path):
         os.remove(local_path)
-        log_debug(f"Removed existing local file: {local_path}")
+        print(f"[DEBUG] Removed local copy: {local_path}")
 
     s3_client.download_file(bucket_name, s3_key, local_path)
-    log_debug(f"Downloaded {s3_key} to {local_path}")
+    print(f"[DEBUG] Downloaded {s3_key} to {local_path}")
 
     df_check = pd.read_parquet(local_path)
-    log_debug(f"S3 parquet check: min={df_check['ds'].min()} max={df_check['ds'].max()}")
+    print(f"[DEBUG] Forecast parquet range: {df_check['ds'].min()} to {df_check['ds'].max()}")
 
 
 def make_live_forecast_figure():
     """
-    Generates the live Prophet forecast figure.
+    Build the live forecast figure for the dashboard.
     """
     download_forecast_from_s3()
 
@@ -57,43 +49,19 @@ def make_live_forecast_figure():
 
     last_actual = actual_df["trip_date"].max()
     forecast_start = (last_actual + pd.Timedelta(days=1)).replace(day=1)
-    forecast_end = (forecast_start + relativedelta(months=1)) - pd.Timedelta(days=1)
-
+    forecast_end = forecast_start + pd.offsets.MonthEnd(0)
     prev_month_start = forecast_start - relativedelta(months=1)
 
-    # ── DEBUG snapshot ───────────────────────────────
-    raw_min, raw_max = forecast_df['ds'].min(), forecast_df['ds'].max()
-    log_debug(f"Raw forecast window: min={raw_min}, max={raw_max}")
-    log_debug(f"Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
+    print(f"[DEBUG] Last actual: {last_actual}")
+    print(f"[DEBUG] Forecast window: {forecast_start} to {forecast_end}")
 
     filtered_df = forecast_df[
         (forecast_df["ds"] >= forecast_start) &
         (forecast_df["ds"] <= forecast_end)
     ]
 
-    filtered_min, filtered_max = filtered_df['ds'].min(), filtered_df['ds'].max()
-    log_debug(f"Filtered forecast window: min={filtered_min}, max={filtered_max}")
-
     if filtered_df.empty:
-        err_msg = (
-            f"[FAILSAFE] Filtered forecast is empty! "
-            f"Raw min={raw_min}, max={raw_max}; "
-            f"Expected: {forecast_start} → {forecast_end}"
-        )
-        log_debug(err_msg)
-        raise ValueError(err_msg)
-
-    # Also write snapshot to file for permanent record
-    snapshot = (
-        f"Run at: {datetime.utcnow().isoformat()}Z\n"
-        f"Raw parquet: min={raw_min}, max={raw_max}\n"
-        f"Filtered: min={filtered_min}, max={filtered_max}\n"
-        f"Window: forecast_start={forecast_start}, forecast_end={forecast_end}\n"
-    )
-    with open("data/debug_forecast_snapshot.txt", "w") as f:
-        f.write(snapshot)
-
-    # ── Standard figure code ───────────────────────────────
+        raise ValueError("[ERROR] Filtered forecast window is empty! Check upstream forecast file.")
 
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -108,10 +76,12 @@ def make_live_forecast_figure():
         (fitted_df["ds"] <= last_actual)
     ]
 
+    # Check CI coverage for annotation
     merged_ci = pd.merge(
         fitted_window,
         window_actuals,
-        left_on="ds", right_on="trip_date", how="inner"
+        left_on="ds", right_on="trip_date",
+        how="inner"
     )
     merged_ci["in_ci"] = (
         (merged_ci["total_rides"] >= merged_ci["yhat_lower"]) &
@@ -120,12 +90,9 @@ def make_live_forecast_figure():
     ci_hits = merged_ci["in_ci"].sum()
     ci_total = len(merged_ci)
     ci_pct = round((ci_hits / ci_total) * 100, 1) if ci_total > 0 else 0.0
+    annotation_text = f"{ci_hits}/{ci_total} days ({ci_pct}%) within CI ({prev_month_start.strftime('%B %Y')})"
 
-    annotation_text = (
-        f"{ci_hits} of {ci_total} days ({ci_pct}%) within CI "
-        f"({(forecast_start - relativedelta(months=1)).strftime('%B %Y')})"
-    )
-
+    # ── Build figure ───────────────────────────────
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
@@ -135,8 +102,9 @@ def make_live_forecast_figure():
     fig.add_trace(go.Scatter(
         x=filtered_df["ds"], y=filtered_df["yhat_lower"],
         fill='tonexty', fillcolor='rgba(150, 0, 255, 0.25)',
-        line=dict(width=0), name='Forecast CI'
+        line=dict(width=0), name="Forecast CI"
     ))
+
     fig.add_trace(go.Scatter(
         x=fitted_df["ds"], y=fitted_df["yhat_upper"],
         line=dict(width=0), showlegend=False
@@ -146,14 +114,16 @@ def make_live_forecast_figure():
         fill='tonexty', fillcolor='rgba(150, 0, 255, 0.25)',
         line=dict(width=0), showlegend=False
     ))
+
     fig.add_trace(go.Scatter(
         x=filtered_df["ds"], y=filtered_df["yhat"],
         mode="lines", name="Forecast", line=dict(color="blue")
     ))
     fig.add_trace(go.Scatter(
         x=fitted_df["ds"], y=fitted_df["yhat"],
-        mode="lines", showlegend=False, line=dict(color="blue")
+        mode="lines", name=None, showlegend=False, line=dict(color="blue")
     ))
+
     fig.add_trace(go.Scatter(
         x=actual_df["trip_date"], y=actual_df["total_rides"],
         mode="markers", name="Historical Actuals",
@@ -164,6 +134,15 @@ def make_live_forecast_figure():
         mode="markers", name="Actual Trips (Observed)",
         marker=dict(size=5, color="#FF6F00")
     ))
+
+    fig.add_annotation(
+        text=annotation_text,
+        x=prev_month_start + pd.Timedelta(days=15),
+        y=max(filtered_df["yhat_upper"].max(), fitted_df["yhat_upper"].max()) * 0.95,
+        showarrow=False,
+        font=dict(size=12),
+        bgcolor="white"
+    )
 
     fig.update_layout(
         xaxis=dict(range=[display_start, display_end]),
