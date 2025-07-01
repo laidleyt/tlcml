@@ -73,7 +73,8 @@ def main():
         model.fit(train_df)
 
         # Fitted values for training period
-        fitted = model.predict(train_df[["ds"]])
+        fitted_future = model.make_future_dataframe(periods=0, freq="D")
+        fitted = model.predict(fitted_future)
         fitted = fitted[["ds", "yhat", "yhat_lower", "yhat_upper"]].copy()
         fitted["type"] = "fitted"
         fitted.to_parquet(FITTED_PARQUET, index=False)
