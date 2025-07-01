@@ -36,6 +36,11 @@ def make_live_forecast_figure():
     forecast_end = (forecast_start + relativedelta(months=1)) - pd.Timedelta(days=1)
     prev_month_start = forecast_start - relativedelta(months=1)
 
+    forecast_df = forecast_df[
+    (forecast_df["ds"] >= forecast_start) &
+    (forecast_df["ds"] <= forecast_end)
+    ]
+
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
