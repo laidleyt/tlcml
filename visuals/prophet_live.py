@@ -18,10 +18,10 @@ def download_forecast_from_s3():
     s3_client.download_file(bucket_name, s3_key, local_path)
     print(f"[PULL] Downloaded {s3_key} to {local_path}")
 
-download_forecast_from_s3()
-
 def make_live_forecast_figure():
-    # Load data fresh each time
+    # Always pull the freshest forecast before plotting
+    download_forecast_from_s3()
+
     forecast_df = pd.read_parquet("data/forecast_output.parquet")
     forecast_df["ds"] = pd.to_datetime(forecast_df["ds"])
 
@@ -31,17 +31,14 @@ def make_live_forecast_figure():
     actual_df = pd.read_parquet("data/forecast_input.parquet")
     actual_df["trip_date"] = pd.to_datetime(actual_df["trip_date"])
 
-    # Get forecast window
     last_actual = actual_df["trip_date"].max()
     forecast_start = (last_actual + pd.Timedelta(days=1)).replace(day=1)
     forecast_end = (forecast_start + relativedelta(months=1)) - pd.Timedelta(days=1)
     prev_month_start = forecast_start - relativedelta(months=1)
 
-    # Display window range
     display_start = (forecast_start - relativedelta(years=2)).strftime("%Y-%m-%d")
     display_end = (forecast_end + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Filter for display
     window_actuals = actual_df[
         (actual_df["trip_date"] >= forecast_start - relativedelta(months=1)) &
         (actual_df["trip_date"] <= last_actual)
@@ -57,7 +54,6 @@ def make_live_forecast_figure():
         (actual_df["trip_date"] <= last_actual)
     ]
 
-    # CI accuracy annotation
     merged_ci = pd.merge(
         fitted_window, actual_window,
         left_on="ds", right_on="trip_date", how="inner"
@@ -75,10 +71,8 @@ def make_live_forecast_figure():
         f"fell within forecast band ({(forecast_start - relativedelta(months=1)).strftime('%B %Y')})."
     )
 
-    # ────────────── PLOT ────────────── #
     fig = go.Figure()
 
-    # Forecast CI
     fig.add_trace(go.Scatter(
         x=forecast_df["ds"], y=forecast_df["yhat_upper"],
         line=dict(width=0), showlegend=False, hoverinfo='skip'
@@ -88,8 +82,6 @@ def make_live_forecast_figure():
         fill='tonexty', fillcolor='rgba(150, 0, 255, 0.25)',
         line=dict(width=0), name='Forecast CI (80–95%)'
     ))
-
-    # Fitted CI
     fig.add_trace(go.Scatter(
         x=fitted_df["ds"], y=fitted_df["yhat_upper"],
         line=dict(width=0), showlegend=False, hoverinfo='skip'
@@ -100,7 +92,6 @@ def make_live_forecast_figure():
         line=dict(width=0), showlegend=False
     ))
 
-    # Forecast & fitted lines
     fig.add_trace(go.Scatter(
         x=forecast_df["ds"], y=forecast_df["yhat"],
         mode="lines", name="Forecast (Prophet)", line=dict(color="blue", width=2)
@@ -110,7 +101,6 @@ def make_live_forecast_figure():
         mode="lines", name=None, line=dict(color="blue", width=2), showlegend=False
     ))
 
-    # Historical actuals
     fig.add_trace(go.Scatter(
         x=actual_df["trip_date"], y=actual_df["total_rides"],
         mode="markers", name="Historical Actuals",
@@ -126,7 +116,6 @@ def make_live_forecast_figure():
         hovertemplate="Date: %{x|%b %d, %Y}<br>Trips: %{y:,}<extra></extra>"
     ))
 
-    # Guide lines & shaded
     fig.add_vrect(
         x0=forecast_start - relativedelta(months=1), x1=last_actual,
         fillcolor="lightgray", opacity=0.3, layer="below", line_width=0
@@ -135,7 +124,6 @@ def make_live_forecast_figure():
     fig.add_vline(x=forecast_start, line=dict(color="gray", dash="dot", width=1))
     fig.add_vline(x=forecast_end, line=dict(color="gray", dash="solid", width=1))
 
-    # CI annotation placement
     y_min = min(forecast_df["yhat_lower"].min(), fitted_df["yhat_lower"].min())
     y_max = max(forecast_df["yhat_upper"].max(), fitted_df["yhat_upper"].max())
     y_range = y_max - y_min
@@ -173,22 +161,14 @@ def make_live_forecast_figure():
         xref="x", yref="y"
     )
 
-    # Layout
     fig.update_layout(
-        xaxis=dict(
-            tickfont=dict(size=12), tickangle=45,
-            range=[display_start, display_end]
-        ),
-        yaxis=dict(
-            title=dict(text="Total Trips", font=dict(size=14)),
-            tickfont=dict(size=12), range=[30000, 190000]
-        ),
-        legend=dict(
-            orientation="h", yanchor="top", y=0.96,
-            xanchor="left", x=0.01,
-            font=dict(size=11), bgcolor="white",
-            bordercolor="lightgray", borderwidth=1
-        ),
+        xaxis=dict(tickfont=dict(size=12), tickangle=45, range=[display_start, display_end]),
+        yaxis=dict(title=dict(text="Total Trips", font=dict(size=14)),
+                   tickfont=dict(size=12), range=[30000, 190000]),
+        legend=dict(orientation="h", yanchor="top", y=0.96,
+                    xanchor="left", x=0.01,
+                    font=dict(size=11), bgcolor="white",
+                    bordercolor="lightgray", borderwidth=1),
         template="plotly_white",
         height=440,
         margin=dict(l=20, r=20, t=20, b=20)
