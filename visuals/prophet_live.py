@@ -16,8 +16,18 @@ def download_forecast_from_s3():
     s3_key = "forecast_output.parquet"
     local_path = "data/forecast_output.parquet"
 
+    # 🚫 Always clear old local copy to avoid stale read
+    if os.path.exists(local_path):
+        os.remove(local_path)
+        print(f"[DEBUG] Removed existing local file: {local_path}")
+
     s3_client.download_file(bucket_name, s3_key, local_path)
     print(f"[PULL] Downloaded {s3_key} to {local_path}")
+
+    # ✅ Double check the window from S3
+    df_check = pd.read_parquet(local_path)
+    print(f"[DEBUG] Downloaded file min={df_check['ds'].min()} max={df_check['ds'].max()}")
+
 
 def make_live_forecast_figure():
     download_forecast_from_s3()
@@ -50,7 +60,6 @@ def make_live_forecast_figure():
     print(f"[DEBUG] Filtered forecast_df window: min={filtered_min} max={filtered_max}")
     print(f"[DEBUG] Forecast Start: {forecast_start}, Forecast End: {forecast_end}")
 
-    # FAILSAFE: Raise error if the filtered window is empty
     if filtered_df.empty:
         raise ValueError(
             f"[FAILSAFE] Filtered forecast_df is empty!\n"
@@ -58,7 +67,6 @@ def make_live_forecast_figure():
             f"Requested window: {forecast_start} to {forecast_end}"
         )
 
-    # Write debug snapshot to file for permanent evidence
     snapshot = (
         f"Run Timestamp: {datetime.utcnow().isoformat()}Z\n"
         f"Raw forecast parquet: min={raw_min}, max={raw_max}\n"
@@ -81,13 +89,11 @@ def make_live_forecast_figure():
         (fitted_df["ds"] <= last_actual)
     ]
 
-    actual_window = actual_df[
-        (actual_df["trip_date"] >= forecast_start - relativedelta(months=1)) &
-        (actual_df["trip_date"] <= last_actual)
-    ]
-
     merged_ci = pd.merge(
-        fitted_window, actual_window,
+        fitted_window, actual_df[
+            (actual_df["trip_date"] >= forecast_start - relativedelta(months=1)) &
+            (actual_df["trip_date"] <= last_actual)
+        ],
         left_on="ds", right_on="trip_date", how="inner"
     )
     merged_ci["in_ci"] = (
